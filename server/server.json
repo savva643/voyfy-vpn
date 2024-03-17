@@ -1,0 +1,24 @@
+[
+  {
+    "serverId": 1,
+    "name": "usa",
+    "isFree": false,
+    "src": "assets/images/usa.jpeg",
+    "locations": 7,
+    "ip": "35.229.109.225.sslip.io",
+    "username": "tensai",
+    "password": "tensai321@",
+    "deluxe": true
+  },
+  {
+    "serverId": 2,
+    "name": "canada",
+    "isFree": false,
+    "src": "assets/images/canada.png",
+    "locations": 5,
+    "ip": "35.229.109.225.sslip.io",
+    "username": "tensai",
+    "password": "tensai321@",
+    "deluxe": true
+  }
+]
