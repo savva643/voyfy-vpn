@@ -11,8 +11,8 @@ import 'package:flutter_vpni/screens/abotapp_screen.dart';
 import 'package:flutter_vpni/screens/change_language.dart';
 import 'package:flutter_vpni/screens/server_location.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
-import 'DraggableSearchableListView.dart';
 
 const kBgColor = Color(0xFF1604E2);
 
@@ -180,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child:
         ListView(
           children: [
+
             SizedBox(
               height: size.height * 0.4,
               child: Column(
@@ -384,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                       const SizedBox(height: 5,),
                                       Text(
-                                        'NEW YORK CITY',
+                                        '',
                                         style: TextStyle(
                                             color: Colors.grey.shade400,
                                             fontWeight: FontWeight.w500,
@@ -458,6 +459,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
+                                        InkWell(
+                                        onTap: () {
+                                          checkspeed();
+                                        },
+                                        child:
                                         Container(
                                           width: size.height * 0.07,
                                           height: size.height * 0.07,
@@ -471,11 +477,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                             size: 30,
                                           ),
                                         ),
+                                        ),
                                         const SizedBox(height: 5,),
                                         Row(
                                           children: [
                                             Text(
-                                              '15,47',
+                                              downloadSpeed.toString(),
                                               style: TextStyle(
                                                   fontSize: 20,
                                                   fontWeight: FontWeight.w500
@@ -507,7 +514,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Container(
+                                        InkWell(
+                                          onTap: () {
+                                            checkspeed();
+                                          },
+                                          child: Container(
                                           width: size.height * 0.07,
                                           height: size.height * 0.07,
                                           decoration: const BoxDecoration(
@@ -520,11 +531,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                             size: 30,
                                           ),
                                         ),
+                                        ),
                                         const SizedBox(height: 5,),
                                         Row(
                                           children: [
                                             Text(
-                                              '250',
+                                              uploadSpeed.toString(),
                                               style: TextStyle(
                                                   fontSize: 20,
                                                   fontWeight: FontWeight.w500
@@ -607,15 +619,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+
           ],
         ),
       ),
+
       ),
     );
   }
-
-
-
 
   Future<void> chacngeserveri(int serverId) async {
     final String response = await rootBundle.loadString('server/server.json');
@@ -626,6 +637,36 @@ class _HomeScreenState extends State<HomeScreen> {
     nameserver = (tagsJson["name"].toString()).tr().toString();
     isfree = tagsJson["isFree"];
   }
+  double downloadSpeed = 0;
+  double uploadSpeed = 0;
+  Future<void> checkspeed() async {
+    final String url = 'https://speed.hetzner.de/100MB.bin'; // A sample URL for testing download speed
+    final int fileSize = 100 * 1024 * 1024; // 100MB in bytes
+    final Stopwatch downloadWatch = Stopwatch();
+    final Stopwatch uploadWatch = Stopwatch();
+
+    downloadWatch.start();
+    await http.get(Uri.parse(url));
+    downloadWatch.stop();
+    setState(() {
+      downloadSpeed = double.parse(((fileSize / downloadWatch.elapsedMilliseconds) * 1000 / (1024 * 1024)).toStringAsFixed(1)); // Speed in MB/s
+    });
+
+    final String testUploadUrl = 'https://example.com/upload_test'; // A sample URL for testing upload speed
+    final List<int> testData = List.generate(10 * 1024 * 1024, (index) => index % 256); // 10MB of random data
+    final HttpClient httpClient = HttpClient();
+    final HttpClientRequest request = await httpClient.postUrl(Uri.parse(testUploadUrl));
+    uploadWatch.start();
+    request.add(testData);
+    final HttpClientResponse response = await request.close();
+    uploadWatch.stop();
+    httpClient.close();
+    setState(() {
+      uploadSpeed = double.parse(((testData.length / uploadWatch.elapsedMilliseconds) * 1000 / (1024 * 1024)).toStringAsFixed(1)); // Speed in MB/s
+    });
+  }
+
+
 
 
   Widget _countDownWidget(Size size) {
@@ -644,116 +685,4 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class DraggableScrollableSheetExample extends StatefulWidget {
-  const DraggableScrollableSheetExample({super.key});
 
-  @override
-  State<DraggableScrollableSheetExample> createState() =>
-      _DraggableScrollableSheetExampleState();
-}
-
-class _DraggableScrollableSheetExampleState
-    extends State<DraggableScrollableSheetExample> {
-  double _sheetPosition = 0.5;
-  final double _dragSensitivity = 600;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
-    return DraggableScrollableSheet(
-      initialChildSize: _sheetPosition,
-      builder: (BuildContext context, ScrollController scrollController) {
-        return ColoredBox(
-          color: colorScheme.primary,
-          child: Column(
-            children: <Widget>[
-              Grabber(
-                onVerticalDragUpdate: (DragUpdateDetails details) {
-                  setState(() {
-                    _sheetPosition -= details.delta.dy / _dragSensitivity;
-                    if (_sheetPosition < 0.25) {
-                      _sheetPosition = 0.25;
-                    }
-                    if (_sheetPosition > 1.0) {
-                      _sheetPosition = 1.0;
-                    }
-                  });
-                },
-                isOnDesktopAndWeb: _isOnDesktopAndWeb,
-              ),
-              Flexible(
-                child: ListView.builder(
-                  controller: _isOnDesktopAndWeb ? null : scrollController,
-                  itemCount: 25,
-                  itemBuilder: (BuildContext context, int index) {
-                    return ListTile(
-                      title: Text(
-                        'Item $index',
-                        style: TextStyle(color: colorScheme.surface),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  bool get _isOnDesktopAndWeb {
-    if (kIsWeb) {
-      return true;
-    }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.macOS:
-      case TargetPlatform.linux:
-      case TargetPlatform.windows:
-        return true;
-      case TargetPlatform.android:
-      case TargetPlatform.iOS:
-      case TargetPlatform.fuchsia:
-        return false;
-    }
-  }
- }
-class Grabber extends StatelessWidget {
-  const Grabber({
-    super.key,
-    required this.onVerticalDragUpdate,
-    required this.isOnDesktopAndWeb,
-  });
-
-  final ValueChanged<DragUpdateDetails> onVerticalDragUpdate;
-  final bool isOnDesktopAndWeb;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!isOnDesktopAndWeb) {
-      return const SizedBox.shrink();
-    }
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
-    return GestureDetector(
-      onVerticalDragUpdate: onVerticalDragUpdate,
-      child: Container(
-        width: double.infinity,
-        color: colorScheme.onSurface,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
-            width: 32.0,
-            height: 4.0,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(8.0),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
