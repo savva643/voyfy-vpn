@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpni/screens/home_screen.dart';
+import 'package:flutter_vpni/screens/login_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -10,11 +12,21 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  Future<void> getlatloc() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final tk = prefs.getString('token') ?? "0";
+    if(tk != "0"){
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen(),));
+    }else{
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen(),));
+    }
+  }
 
   @override
   void initState() {
     Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen(),));
+      getlatloc();
     });
     //
     super.initState();

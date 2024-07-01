@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "flutter_vpn" "\0"
+            VALUE "CompanyName", "com.keeppixel" "\0"
+            VALUE "FileDescription", "VoyFy" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "flutter_vpn" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2022 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "flutter_vpn.exe" "\0"
-            VALUE "ProductName", "flutter_vpn" "\0"
+            VALUE "InternalName", "VoyFy" "\0"
+            VALUE "LegalCopyright", "© 2019–2024 Keep Pixel Corporation. All rights reserved." "\0"
+            VALUE "OriginalFilename", "VoyFy.exe" "\0"
+            VALUE "ProductName", "VoyFy" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

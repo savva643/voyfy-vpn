@@ -1,4 +1,4 @@
-package com.example.flutter_vpn
+package com.keeppixel.voyfy
 
 import io.flutter.embedding.android.FlutterActivity
 

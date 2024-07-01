@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpni/screens/abotapp_screen.dart';
+import 'package:flutter_vpni/screens/account_sccreen.dart';
 import 'package:flutter_vpni/screens/change_language.dart';
 import 'package:flutter_vpni/screens/server_location.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,6 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+         ListTile(
+         onTap: () async {
+          final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => AccountScreen()));
+        },
+        leading: const Icon(Icons.account_circle, size: 18,),
+        title:  Text('account'.tr().toString(), style: TextStyle(fontSize: 14),),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16,),
+      ),
             ListTile(
               onTap: () async {
                 final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ChangeLanguage()));
@@ -684,5 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
+
 
 
