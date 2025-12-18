@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Voyfy VPN – Download</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div class="logo">Voyfy VPN</div>
+        <nav class="nav">
+          <a href="#download">Download</a>
+          <a href="#features">Features</a>
+          <a href="#help">Help</a>
+        </nav>
+      </header>
+
+      <main class="main">
+        <section class="hero">
+          <div class="hero-text">
+            <h1>Fast & secure VPN for all your devices</h1>
+            <p>Download Voyfy VPN for your platform. We detected your OS and selected the best option for you.</p>
+            <div id="primary-download" class="primary-download"></div>
+            <button class="secondary-button" id="all-platforms-btn">All platforms</button>
+          </div>
+          <div class="hero-card">
+            <div class="hero-card-header">
+              <span class="dot dot-green"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-red"></span>
+            </div>
+            <div class="hero-card-body">
+              <p class="hero-status">Best server: Frankfurt, DE</p>
+              <p class="hero-status-sub">Low latency • High speed • No logs</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="auth" class="section section-auth">
+          <h2>Sign in to Voyfy</h2>
+          <div class="auth-grid">
+            <form id="login-form" class="auth-card">
+              <h3>Log in</h3>
+              <label>
+                <span>Login</span>
+                <input type="text" id="login-login" autocomplete="username" required />
+              </label>
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  id="login-password"
+                  autocomplete="current-password"
+                  required
+                />
+              </label>
+              <button type="submit" class="auth-button">Log in</button>
+              <p class="auth-message" id="login-message"></p>
+            </form>
+
+            <form id="register-form" class="auth-card">
+              <h3>Create account</h3>
+              <label>
+                <span>Nickname</span>
+                <input type="text" id="reg-nick" required />
+              </label>
+              <label>
+                <span>Login</span>
+                <input type="text" id="reg-login" required />
+              </label>
+              <label>
+                <span>Email</span>
+                <input type="email" id="reg-email" required />
+              </label>
+              <label>
+                <span>Password</span>
+                <input type="password" id="reg-password" required />
+              </label>
+              <button type="submit" class="auth-button auth-button-outline">
+                Register
+              </button>
+              <p class="auth-message" id="reg-message"></p>
+            </form>
+
+            <form id="twofa-form" class="auth-card auth-card-hidden">
+              <h3>Two‑factor authentication</h3>
+              <div class="twofa-toggle">
+                <button type="button" id="twofa-mode-totp" class="twofa-mode active">
+                  2FA code
+                </button>
+                <button type="button" id="twofa-mode-backup" class="twofa-mode">
+                  Backup code
+                </button>
+              </div>
+              <p class="twofa-text">
+                <span id="twofa-text-main">
+                  Enter the 2FA code from your authenticator app to complete sign‑in.
+                </span>
+              </p>
+              <label id="twofa-label-totp">
+                <span>2FA code</span>
+                <input type="text" id="twofa-code" inputmode="numeric" />
+              </label>
+              <label id="twofa-label-backup" class="hidden">
+                <span>Backup code</span>
+                <input type="text" id="twofa-backup" />
+              </label>
+              <button type="submit" class="auth-button">Confirm</button>
+              <p class="auth-message" id="twofa-message"></p>
+            </form>
+          </div>
+        </section>
+
+        <section id="download" class="section section-download">
+          <h2>Choose your platform</h2>
+          <div id="all-platforms" class="platform-grid"></div>
+        </section>
+
+        <section id="servers" class="section section-servers">
+          <h2>Available VPN servers</h2>
+          <div id="servers-table-wrapper">
+            <table id="servers-table">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>Host</th>
+                  <th>Ping</th>
+                  <th>Load</th>
+                  <th>Tier</th>
+                </tr>
+              </thead>
+              <tbody id="servers-table-body">
+                <!-- will be filled by JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="features" class="section">
+          <h2>Why Voyfy VPN</h2>
+          <div class="features-grid">
+            <div class="feature-card">
+              <h3>No logs</h3>
+              <p>We never store your activity or connection logs. Your privacy is our priority.</p>
+            </div>
+            <div class="feature-card">
+              <h3>Global servers</h3>
+              <p>Connect to high-speed servers around the world for the best performance.</p>
+            </div>
+            <div class="feature-card">
+              <h3>Multi-platform</h3>
+              <p>Use Voyfy VPN on Windows, macOS, Linux, Android, and iOS.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="help" class="section section-help">
+          <h2>Need help?</h2>
+          <p>Email us at <a href="mailto:support@voyfy.vpn">support@voyfy.vpn</a>.</p>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>© <span id="year"></span> Voyfy VPN</span>
+      </footer>
+    </div>
+
+    <script src="./os-detect.js"></script>
+  </body>
+  </html>
+
+

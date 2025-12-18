@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home_screen.dart';
@@ -37,6 +38,22 @@ class _ServerLocationState extends State<ServerLocation> {
   }
 
   Future<void> _loadServerData() async {
+    try {
+      final uri = Uri.parse('http://10.0.2.2:4000/api/servers');
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final decoded = json.decode(res.body.toString());
+        final data = decoded['servers'] as List<dynamic>? ?? [];
+        setState(() {
+          _serverData = data;
+          _searchedServerData = data;
+        });
+        return;
+      }
+    } catch (_) {
+      // ignore and fallback to local json
+    }
+
     final String response = await rootBundle.loadString('server/server.json');
     final data = await json.decode(response);
     setState(() {

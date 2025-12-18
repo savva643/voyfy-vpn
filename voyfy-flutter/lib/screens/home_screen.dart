@@ -638,9 +638,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> chacngeserveri(int serverId) async {
+    try {
+      final uri = Uri.parse('http://10.0.2.2:4000/api/servers');
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body.toString());
+        final list = decoded['servers'] as List<dynamic>? ?? [];
+        final server = list.firstWhere(
+          (s) => s['serverId'] == serverId,
+          orElse: () => null,
+        );
+        if (server != null) {
+          idserv = serverId;
+          am = AssetImage(server["src"]);
+          nameserver = (server["name"].toString()).tr().toString();
+          isfree = server["isFree"] == true;
+          setState(() {});
+          return;
+        }
+      }
+    } catch (_) {
+      // ignore and fallback
+    }
+
     final String response = await rootBundle.loadString('server/server.json');
     var tagsJson = jsonDecode(response)[serverId-1];
-    print(tagsJson.toString());
     idserv = serverId;
     am = AssetImage(tagsJson["src"]);
     nameserver = (tagsJson["name"].toString()).tr().toString();
