@@ -123,6 +123,65 @@ function renderAllPlatforms() {
   });
 }
 
+// Country flags mapping
+const COUNTRY_FLAGS = {
+  "Germany": "🇩🇪",
+  "Finland": "🇫🇮",
+  "Turkey": "🇹🇷",
+  "USA": "🇺🇸",
+  "United States": "🇺🇸",
+  "UK": "🇬🇧",
+  "United Kingdom": "🇬🇧",
+  "France": "🇫🇷",
+  "Netherlands": "🇳🇱",
+  "Singapore": "🇸🇬",
+  "Japan": "🇯🇵",
+  "South Korea": "🇰🇷",
+  "Brazil": "🇧🇷",
+  "Canada": "🇨🇦",
+  "Australia": "🇦🇺",
+  "India": "🇮🇳",
+  "Russia": "🇷🇺",
+  "Poland": "🇵🇱",
+  "Spain": "🇪🇸",
+  "Italy": "🇮🇹",
+  "Sweden": "🇸🇪",
+  "Switzerland": "🇨🇭",
+  "Norway": "🇳🇴",
+  "Denmark": "🇩🇰",
+  "Austria": "🇦🇹",
+  "Belgium": "🇧🇪",
+  "Czech Republic": "🇨🇿",
+  "Ireland": "🇮🇪",
+  "Portugal": "🇵🇹",
+  "Romania": "🇷🇴",
+  "Ukraine": "🇺🇦",
+  "Israel": "🇮🇱",
+  "UAE": "🇦🇪",
+  "Hong Kong": "🇭🇰",
+  "Taiwan": "🇹🇼",
+  "Thailand": "🇹🇭",
+  "Vietnam": "🇻🇳",
+  "Indonesia": "🇮🇩",
+  "Malaysia": "🇲🇾",
+  "Philippines": "🇵🇭",
+  "Mexico": "🇲🇽",
+  "Argentina": "🇦🇷",
+  "Chile": "🇨🇱",
+  "Colombia": "🇨🇴",
+  "Peru": "🇵🇪",
+  "South Africa": "🇿🇦",
+  "Egypt": "🇪🇬",
+  "Nigeria": "🇳🇬",
+  "Kenya": "🇰🇪",
+  "Morocco": "🇲🇦",
+  "New Zealand": "🇳🇿"
+};
+
+function getFlag(country) {
+  return COUNTRY_FLAGS[country] || "🌍";
+}
+
 async function renderServersTable() {
   const body = document.getElementById("servers-table-body");
   if (!body) return;
@@ -135,31 +194,68 @@ async function renderServersTable() {
 
     body.innerHTML = "";
 
-    servers.forEach((s, idx) => {
+    // Default servers if API returns empty
+    const defaultServers = [
+      { country: "Germany", host: "de1.voyfy.vpn", pingMs: 45, loadPercent: 35, isFree: false },
+      { country: "Finland", host: "fi1.voyfy.vpn", pingMs: 52, loadPercent: 28, isFree: false },
+      { country: "Turkey", host: "tr1.voyfy.vpn", pingMs: 68, loadPercent: 42, isFree: true },
+      { country: "USA", host: "us1.voyfy.vpn", pingMs: 85, loadPercent: 55, isFree: false },
+      { country: "Singapore", host: "sg1.voyfy.vpn", pingMs: 120, loadPercent: 30, isFree: true }
+    ];
+
+    const displayServers = servers.length > 0 ? servers : defaultServers;
+
+    displayServers.forEach((s, idx) => {
       const tr = document.createElement("tr");
 
       const ping = s.pingMs ?? (25 + idx * 5);
-      const load = s.loadPercent ?? Math.min(80, 20 + (s.locations || 1) * 5);
-      const host = s.host || s.ip || "n/a";
-      const name = s.country || s.name || "Server";
+      const load = s.loadPercent ?? Math.min(80, 20 + (idx || 1) * 5);
+      const host = s.host || s.ip || `${s.country?.toLowerCase() || 'srv'}.voyfy.vpn`;
+      const country = s.country || s.name || "Server";
+      const flag = getFlag(country);
+
+      // Determine load color
+      let loadColor = "#22c55e"; // green
+      if (load > 50) loadColor = "#eab308"; // yellow
+      if (load > 75) loadColor = "#ef4444"; // red
 
       tr.innerHTML = `
-        <td>${name}</td>
+        <td><span class="server-flag">${flag}</span> ${country}</td>
         <td>${host}</td>
-        <td>${ping} ms</td>
-        <td>${load}%</td>
+        <td><span class="ping-badge ${ping < 60 ? 'good' : ping < 100 ? 'medium' : 'high'}">${ping} ms</span></td>
+        <td>
+          <div class="load-indicator">
+            <div class="load-bar" style="width: ${load}%; background: ${loadColor}"></div>
+            <span>${load}%</span>
+          </div>
+        </td>
         <td>
           <span class="servers-pill ${s.isFree ? "free" : "paid"}">
             ${s.isFree ? "Free" : "Premium"}
           </span>
+        </td>
+        <td>
+          <button class="connect-btn" onclick="connectToServer('${host}', '${country}')">Connect</button>
         </td>
       `;
 
       body.appendChild(tr);
     });
   } catch (e) {
-    // ignore errors
+    // Render default servers on error
+    renderServersTable();
   }
+}
+
+// Placeholder for connect function
+function connectToServer(host, country) {
+  const token = localStorage.getItem("voyfy_token");
+  if (!token) {
+    alert("Please log in to connect to VPN servers.");
+    showSection("auth");
+    return;
+  }
+  alert(`Connecting to ${country} (${host})...\n\nIn the full app, this would establish a VPN connection.`);
 }
 
 async function callAuth(endpoint, payload) {
@@ -359,16 +455,42 @@ function setupAuthForms() {
   }
 }
 
+// Show/hide sections based on login state
+function updateUIForAuthState() {
+  const token = localStorage.getItem("voyfy_token");
+  const dashboard = document.getElementById("dashboard");
+  const auth = document.getElementById("auth");
+  const loginMsg = document.getElementById("login-message");
+
+  if (token) {
+    // User is logged in - show dashboard, hide auth
+    if (dashboard) dashboard.classList.remove("hidden");
+    if (auth) auth.classList.add("hidden");
+  } else {
+    // User is not logged in - hide dashboard, show auth
+    if (dashboard) dashboard.classList.add("hidden");
+    if (auth) auth.classList.remove("hidden");
+  }
+}
+
+// Show specific section and scroll to it
+function showSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (section) {
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   renderPrimaryDownload();
   renderAllPlatforms();
   renderServersTable();
   setupAuthForms();
+  updateUIForAuthState();
 
   // Auto session validation
   (async () => {
     const token = localStorage.getItem("voyfy_token");
-    const statusEl = document.getElementById("login-message");
     if (!token) return;
 
     try {
@@ -387,10 +509,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json().catch(() => ({}));
       if (res.status === 200 && data.valid) {
-        if (statusEl) {
-          statusEl.textContent = "You are already logged in.";
-          statusEl.className = "auth-message success";
-        }
+        updateUIForAuthState();
+      } else {
+        // Token invalid, clear it
+        localStorage.removeItem("voyfy_token");
+        localStorage.removeItem("voyfy_refresh");
+        updateUIForAuthState();
       }
     } catch (e) {
       // ignore errors
@@ -400,10 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const allPlatformsBtn = document.getElementById("all-platforms-btn");
   if (allPlatformsBtn) {
     allPlatformsBtn.addEventListener("click", () => {
-      const section = document.getElementById("download");
-      if (section) {
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+      showSection("download");
     });
   }
 });

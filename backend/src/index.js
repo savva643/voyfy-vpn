@@ -1,190 +1,133 @@
-const express = require("express");
-const cors = require("cors");
-const fetch = require("node-fetch");
-const fs = require("fs");
-const path = require("path");
-require("dotenv").config();
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const config = require('./config');
+const logger = require('./utils/logger');
+const { initDatabase } = require('./db');
+const { authenticate, requireAdmin } = require('./middleware/auth');
+
+// Controllers
+const authController = require('./controllers/authController');
+const subscriptionController = require('./controllers/subscriptionController');
+const serverController = require('./controllers/serverController');
+const userController = require('./controllers/userController');
 
 const app = express();
-const PORT = process.env.PORT || 4000;
 
-// Base URL of auth-service (production: https://auth.keep-pixel.ru)
-const AUTH_SERVICE_URL =
-  process.env.AUTH_SERVICE_URL || "https://auth.keep-pixel.ru";
-
-app.use(
-  cors({
-    origin: true,
-    credentials: true
-  })
-);
+// Middleware
+app.use(cors(config.cors));
 app.use(express.json());
 
-// Simple health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", service: "voyfy-backend" });
+// Request logging
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`, {
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  next();
 });
 
-// Proxy auth routes to auth-service, so clients always talk to our backend
-app.post("/api/auth/login", async (req, res) => {
+// ==========================================
+// Health Check
+// ==========================================
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    service: 'voyfy-backend',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ==========================================
+// Auth Routes (Test Mode)
+// ==========================================
+app.post('/api/auth/register', authController.register);
+app.post('/api/auth/login', authController.login);
+app.post('/api/auth/refresh', authController.refreshToken);
+app.post('/api/auth/logout', authController.logout);
+app.get('/api/auth/validate', authenticate, authController.validateSession);
+
+// FUTURE: External OAuth/SSO
+app.post('/api/auth/oauth/login', authController.externalLogin);
+
+// ==========================================
+// Subscription Routes
+// ==========================================
+app.get('/api/subscription', authenticate, subscriptionController.getSubscription);
+app.get('/api/subscription/json', authenticate, subscriptionController.getSubscriptionJson);
+app.get('/api/subscription/:uuid', subscriptionController.getSubscriptionByUuid);
+
+// ==========================================
+// Server Routes (Public)
+// ==========================================
+app.get('/api/servers', serverController.getServers);
+app.get('/api/servers/:id', serverController.getServerById);
+
+// ==========================================
+// User Routes (Authenticated)
+// ==========================================
+app.get('/api/user/profile', authenticate, userController.getProfile);
+
+// ==========================================
+// Admin Routes (Admin Only)
+// ==========================================
+
+// Server Management
+app.post('/api/admin/servers', authenticate, requireAdmin, serverController.addServer);
+app.put('/api/admin/servers/:id', authenticate, requireAdmin, serverController.updateServer);
+app.delete('/api/admin/servers/:id', authenticate, requireAdmin, serverController.deleteServer);
+app.get('/api/admin/xray-config', authenticate, requireAdmin, serverController.getXrayConfig);
+
+// User Management
+app.get('/api/admin/users', authenticate, requireAdmin, userController.getAllUsers);
+app.put('/api/admin/users/:id', authenticate, requireAdmin, userController.updateUser);
+app.post('/api/admin/users/:id/reset-usage', authenticate, requireAdmin, userController.resetUsage);
+app.delete('/api/admin/users/:id', authenticate, requireAdmin, userController.deleteUser);
+
+// Usage Update (for Xray stats collection)
+app.post('/api/subscription/usage', authenticate, requireAdmin, subscriptionController.updateUsage);
+
+// ==========================================
+// Error Handling
+// ==========================================
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+  });
+});
+
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found',
+  });
+});
+
+// ==========================================
+// Server Startup
+// ==========================================
+const startServer = async () => {
   try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Pass through device-related headers if present
-        "device-fingerprint": req.headers["device-fingerprint"] || "",
-        platform: req.headers["platform"] || "",
-        "device-type": req.headers["device-type"] || "",
-        "app-version": req.headers["app-version"] || "",
-        authorization: req.headers.authorization || ""
-      },
-      body: JSON.stringify(req.body || {})
+    // Initialize database
+    await initDatabase();
+    logger.info('Database initialized');
+    
+    // Start server
+    app.listen(config.port, () => {
+      logger.info(`Voyfy backend is running on http://localhost:${config.port}`);
+      logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
   } catch (err) {
-    console.error("Auth proxy /login error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
+    logger.error('Failed to start server', err);
+    process.exit(1);
   }
-});
+};
 
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "device-fingerprint": req.headers["device-fingerprint"] || "",
-        platform: req.headers["platform"] || "",
-        "device-type": req.headers["device-type"] || "",
-        "app-version": req.headers["app-version"] || ""
-      },
-      body: JSON.stringify(req.body || {})
-    });
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
-  } catch (err) {
-    console.error("Auth proxy /register error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
-  }
-});
-
-app.post("/api/auth/login/2fa", async (req, res) => {
-  try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/login/2fa`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "device-fingerprint": req.headers["device-fingerprint"] || "",
-        platform: req.headers["platform"] || "",
-        "device-type": req.headers["device-type"] || "",
-        "app-version": req.headers["app-version"] || ""
-      },
-      body: JSON.stringify(req.body || {})
-    });
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
-  } catch (err) {
-    console.error("Auth proxy /login/2fa error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
-  }
-});
-
-app.post("/api/auth/login/backup-code", async (req, res) => {
-  try {
-    const response = await fetch(
-      `${AUTH_SERVICE_URL}/api/auth/login/backup-code`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "device-fingerprint": req.headers["device-fingerprint"] || "",
-          platform: req.headers["platform"] || "",
-          "device-type": req.headers["device-type"] || "",
-          "app-version": req.headers["app-version"] || ""
-        },
-        body: JSON.stringify(req.body || {})
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
-  } catch (err) {
-    console.error("Auth proxy /login/backup-code error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
-  }
-});
-
-app.post("/api/auth/validate-session", async (req, res) => {
-  try {
-    const response = await fetch(
-      `${AUTH_SERVICE_URL}/api/auth/validate-session`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "device-fingerprint": req.headers["device-fingerprint"] || "",
-          platform: req.headers["platform"] || "",
-          "device-type": req.headers["device-type"] || "",
-          "app-version": req.headers["app-version"] || "",
-          authorization: req.headers.authorization || ""
-        },
-        body: JSON.stringify({})
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
-  } catch (err) {
-    console.error("Auth proxy /validate-session error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
-  }
-});
-
-app.post("/api/auth/refresh", async (req, res) => {
-  try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(req.body || {})
-    });
-
-    const data = await response.json().catch(() => ({}));
-    res.status(response.status).json(data);
-  } catch (err) {
-    console.error("Auth proxy /refresh error:", err);
-    res.status(500).json({ message: "Auth service unavailable" });
-  }
-});
-
-// Static list of VPN servers (for now) – loaded from Flutter JSON for consistency
-app.get("/api/servers", (req, res) => {
-  try {
-    const jsonPath = path.join(
-      __dirname,
-      "..",
-      "..",
-      "voyfy-flutter",
-      "server",
-      "server.json"
-    );
-    const raw = fs.readFileSync(jsonPath, "utf8");
-    const servers = JSON.parse(raw);
-    res.json({ servers });
-  } catch (err) {
-    console.error("Error reading servers:", err);
-    res.json({ servers: [] });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Voyfy backend is running on http://localhost:${PORT}`);
-});
+startServer();
 
 

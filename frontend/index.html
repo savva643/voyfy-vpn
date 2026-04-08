@@ -38,6 +38,48 @@
           </div>
         </section>
 
+        <!-- Subscription Dashboard (shown when logged in) -->
+        <section id="dashboard" class="section section-dashboard hidden">
+          <h2>My Subscription</h2>
+          <div class="dashboard-grid">
+            <div class="tariff-card">
+              <div class="tariff-header">
+                <span class="tariff-icon">👑</span>
+                <div class="tariff-info">
+                  <h3>Premium+</h3>
+                  <p class="tariff-status">Active</p>
+                </div>
+              </div>
+              <div class="tariff-progress">
+                <div class="progress-label">
+                  <span>15 days remaining</span>
+                  <span>30 days</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 50%"></div>
+                </div>
+              </div>
+              <button class="auth-button" onclick="showSection('servers')">Connect to VPN</button>
+            </div>
+
+            <div class="stats-card">
+              <h4>Usage Statistics</h4>
+              <div class="stat-item">
+                <span class="stat-label">Traffic used</span>
+                <span class="stat-value">125 GB</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Connection time</span>
+                <span class="stat-value">48 hours</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Servers used</span>
+                <span class="stat-value">8</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="auth" class="section section-auth">
           <h2>Sign in to Voyfy</h2>
           <div class="auth-grid">

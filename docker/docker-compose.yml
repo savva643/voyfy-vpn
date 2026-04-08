@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: voyfy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-voyfy}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-voyfy_secret}
+      POSTGRES_DB: ${DB_NAME:-voyfy_vpn}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - voyfy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-voyfy} -d ${DB_NAME:-voyfy_vpn}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Xray Core VPN Server
+  xray:
+    build:
+      context: ./xray
+      dockerfile: Dockerfile
+    container_name: voyfy-xray
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - XRAY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}
+      - XRAY_PRIVATE_KEY=${XRAY_PRIVATE_KEY}
+      - XRAY_SERVER_NAME=${XRAY_SERVER_NAME:-www.microsoft.com}
+      - XRAY_SHORT_ID=${XRAY_SHORT_ID:-0123456789abcdef}
+      - XRAY_PORT=${XRAY_PORT:-8443}
+      - API_BASE_URL=http://api:4000
+    volumes:
+      - xray_logs:/var/log/xray
+    ports:
+      - "${XRAY_PORT:-8443}:${XRAY_PORT:-8443}"
+      - "${XRAY_API_PORT:-10085}:10085"
+    networks:
+      - voyfy-network
+    depends_on:
+      - api
+
+  # API Backend
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: voyfy-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-voyfy_vpn}
+      - DB_USER=${DB_USER:-voyfy}
+      - DB_PASSWORD=${DB_PASSWORD:-voyfy_secret}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - XRAY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}
+      - XRAY_PRIVATE_KEY=${XRAY_PRIVATE_KEY}
+      - XRAY_SERVER_NAME=${XRAY_SERVER_NAME:-www.microsoft.com}
+      - XRAY_SHORT_ID=${XRAY_SHORT_ID:-0123456789abcdef}
+      - XRAY_PORT=${XRAY_PORT:-443}
+    volumes:
+      - ../backend/logs:/app/logs
+    ports:
+      - "4000:4000"
+    networks:
+      - voyfy-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npm", "start"]
+
+  # Nginx - Frontend + API Proxy (ALWAYS ENABLED)
+  nginx:
+    image: nginx:alpine
+    container_name: voyfy-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx-http.conf:/etc/nginx/nginx.conf:ro
+      - ../frontend:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+    networks:
+      - voyfy-network
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  xray_logs:
+
+networks:
+  voyfy-network:
+    driver: bridge

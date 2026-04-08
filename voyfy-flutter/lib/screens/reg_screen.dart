@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -17,383 +18,437 @@ class RegScreen extends StatefulWidget {
 }
 
 const kColorBg = Color(0xffE6E7F0);
+
 class _RegScreenState extends State<RegScreen> {
-
-
-  @override
-  Widget build(BuildContext context) {
-    Size size = MediaQuery.of(context).size;
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size.zero,
-        child: AppBar(
-          backgroundColor: kColorBg,
-          elevation: 0,
-          systemOverlayStyle: const SystemUiOverlayStyle(
-            statusBarColor: kColorBg,
-            statusBarBrightness: Brightness.light,
-            statusBarIconBrightness: Brightness.dark,
-          ),
-        ),
-      ),
-      backgroundColor: kColorBg,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isSmall = constraints.maxHeight < 600;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
-                child: Column(
-                  mainAxisAlignment:
-                      isSmall ? MainAxisAlignment.start : MainAxisAlignment.center,
-                  children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          'assets/images/logo.png',
-                          width: size.width * 0.18,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'VoyFy',
-                          style: TextStyle(
-                            letterSpacing: 2,
-                            fontSize: isSmall ? 26 : 34,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xff000000),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'registervoufy'.tr().toString(),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        letterSpacing: 2,
-                        fontSize: isSmall ? 24 : 30,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xff000000),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'via'.tr().toString(),
-                          style: const TextStyle(
-                            letterSpacing: 2,
-                            fontSize: 16,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xff000000),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GradientText(
-                          'Keep Pixel',
-                          style: const TextStyle(
-                            letterSpacing: 2,
-                            fontSize: 18,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w700,
-                          ),
-                          colors: const [Color(0xff0038FF), Color(0xff829CFB)],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      height: 48,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextFormField(
-                        controller: _searchServerControllernick,
-                        onChanged: _checknick,
-                        cursorColor: Colors.grey,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'nick'.tr().toString(),
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      height: 48,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextFormField(
-                        controller: _searchServerControllerlogin,
-                        onChanged: _checlogin,
-                        cursorColor: Colors.grey,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'login'.tr().toString(),
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      height: 48,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextFormField(
-                        controller: _searchServerController,
-                        onChanged: _checkem,
-                        cursorColor: Colors.grey,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'email'.tr().toString(),
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      height: 48,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextFormField(
-                        controller: _searchServerControllerpass,
-                        onChanged: _checpass,
-                        cursorColor: Colors.grey,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'password'.tr().toString(),
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 48,
-                      width: double.infinity,
-                      child: Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        child: ListTile(
-                          onTap: () async {
-                            if (email == true &&
-                                passw == true &&
-                                logan == true &&
-                                nicki == true) {
-                              await postRequest();
-                            } else if (nicki == false) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("enternick".tr().toString()),
-                                ),
-                              );
-                            } else if (logan == false) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("enterlog".tr().toString()),
-                                ),
-                              );
-                            } else if (email == false) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("enteremail".tr().toString()),
-                                ),
-                              );
-                            } else if (passw == false) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("enterpass".tr().toString()),
-                                ),
-                              );
-                            }
-                          },
-                          subtitle: const Text(""),
-                          title: Text(
-                            'register'.tr().toString(),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontFamily: 'Gilroy',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    SizedBox(
-                      height: 48,
-                      width: double.infinity,
-                      child: Material(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            gradient: const LinearGradient(
-                              begin: Alignment.centerRight,
-                              end: Alignment.centerLeft,
-                              colors: [
-                                Color.fromARGB(255, 0, 0, 255),
-                                Color.fromARGB(255, 255, 0, 0)
-                              ],
-                            ),
-                          ),
-                          child: ListTile(
-                            onTap: () async {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const LoginScreen(),
-                                ),
-                              );
-                            },
-                            subtitle: const Text(""),
-                            title: Text(
-                              'log_in'.tr().toString(),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontFamily: 'Gilroy',
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _emailValid = false;
+  bool _passwordValid = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _searchServerController.dispose();
-    _searchServerControllerpass.dispose();
-    _searchServerControllernick.dispose();
-    _searchServerControllerlogin.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
-  final _searchServerController = TextEditingController();
-  final _searchServerControllerpass = TextEditingController();
-  final _searchServerControllernick = TextEditingController();
-  final _searchServerControllerlogin = TextEditingController();
-  bool email = false;
-  bool passw = false;
-  bool logan = false;
-  bool nicki = false;
-  _checkem(String? textVal) {
-    if (textVal != null && textVal.isNotEmpty) {
-      setState(() => email = true);
-    }else{
-      setState(() => email = false);
-    }
-  }
-  _checpass(String? textVal) {
-    if (textVal != null && textVal.isNotEmpty) {
-      setState(() => passw = true);
-    }else{
-      setState(() => passw = false);
-    }
-  }
-  _checknick(String? textVal) {
-    if (textVal != null && textVal.isNotEmpty) {
-      setState(() => nicki = true);
-    }else{
-      setState(() => nicki = false);
-    }
-  }
 
-  Future<http.Response> postRequest() async {
-    final uri = Uri.parse("http://10.0.2.2:4000/api/auth/register");
+  bool get isDesktop => MediaQuery.of(context).size.width > 900;
+  bool get isTablet => MediaQuery.of(context).size.width > 600 && MediaQuery.of(context).size.width <= 900;
 
-    final response = await http.post(
-      uri,
-      headers: {
-        "Content-Type": "application/json; charset=UTF-8",
-        "platform": Platform.isIOS ? "ios" : "android",
-        "device-type": "mobile",
-        "app-version": "1.0.0",
-      },
-      body: jsonEncode(<String, String>{
-        'login': _searchServerControllerlogin.text.toString(),
-        'email': _searchServerController.text.toString(),
-        'password': _searchServerControllerpass.text.toString(),
-        'gameNickname': _searchServerControllernick.text.toString(),
-      }),
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isDesktopView = isDesktop;
+    final isTabletView = isTablet;
+
+    return Scaffold(
+      backgroundColor: kColorBg,
+      body: SafeArea(
+        child: isDesktopView || isTabletView
+            ? _buildDesktopLayout(size)
+            : _buildMobileLayout(size),
+      ),
     );
+  }
 
-    final body = response.body.toString();
-    final decoded = jsonDecode(body);
+  Widget _buildMobileLayout(Size size) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: size.height - 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLogoSection(size, isMobile: true),
+            const SizedBox(height: 24),
+            Text(
+              'Create Account',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                letterSpacing: 2,
+                fontSize: 28,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w700,
+                color: const Color(0xff000000),
+              ),
+            ),
+            const SizedBox(height: 32),
+            _buildRegisterForm(size, isMobile: true),
+          ],
+        ),
+      ),
+    );
+  }
 
-    if (response.statusCode == 201 && decoded["token"] != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', decoded["token"]);
-      await prefs.setString('refreshToken', decoded["refreshToken"] ?? '');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+  Widget _buildDesktopLayout(Size size) {
+    return Row(
+      children: [
+        // Left side - Branding
+        Expanded(
+          flex: 1,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF0038FF),
+                  const Color(0xFF8220F9),
+                ],
+              ),
+            ),
+            child: Center(
+              child: _buildLogoSection(size, isMobile: false),
+            ),
+          ),
+        ),
+        // Right side - Register form
+        Expanded(
+          flex: 1,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(48),
+            child: _buildRegisterForm(size, isMobile: false),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogoSection(Size size, {required bool isMobile}) {
+    if (isMobile) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0038FF).withOpacity(0.2),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'VoyFy',
+            style: TextStyle(
+              letterSpacing: 2,
+              fontSize: 32,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w900,
+              color: Color(0xff000000),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Secure VPN Connection',
+            style: TextStyle(
+              fontSize: 14,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w400,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("setlogin".tr().toString()),
-        ),
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.2),
+                  blurRadius: 30,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'VoyFy',
+            style: TextStyle(
+              letterSpacing: 3,
+              fontSize: 48,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Secure VPN Connection',
+            style: TextStyle(
+              fontSize: 16,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w400,
+              color: Colors.white.withOpacity(0.8),
+            ),
+          ),
+        ],
       );
     }
-
-    return response;
   }
 
-  _checlogin(String? textVal) {
-    if (textVal != null && textVal.isNotEmpty) {
-      setState(() => logan = true);
-    }else{
-      setState(() => logan = false);
+  Widget _buildRegisterForm(Size size, {required bool isMobile}) {
+    final maxWidth = isMobile ? double.infinity : 400.0;
+
+    return Container(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Column(
+        mainAxisAlignment: isMobile ? MainAxisAlignment.center : MainAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: _emailController,
+            onChanged: _validateEmail,
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(
+              color: Colors.black,
+              fontFamily: 'Gilroy',
+              fontSize: 16,
+            ),
+            cursorColor: Colors.grey,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xff0038FF), width: 1.5),
+              ),
+              hintText: 'Email',
+              hintStyle: TextStyle(
+                color: Colors.grey.shade500,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w400,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordController,
+            onChanged: _validatePassword,
+            obscureText: true,
+            style: const TextStyle(
+              color: Colors.black,
+              fontFamily: 'Gilroy',
+              fontSize: 16,
+            ),
+            cursorColor: Colors.grey,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xff0038FF), width: 1.5),
+              ),
+              hintText: 'Password',
+              hintStyle: TextStyle(
+                color: Colors.grey.shade500,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w400,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _register,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xff0038FF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Register',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LoginScreen(),
+                ),
+              );
+            },
+            child: const Text(
+              'Already have an account? Log in',
+              style: TextStyle(
+                color: Color(0xff0038FF),
+                fontSize: 14,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _validateEmail(String? value) {
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
+    setState(() {
+      _emailValid = value != null && value.isNotEmpty && emailRegex.hasMatch(value);
+    });
+  }
+
+  void _validatePassword(String? value) {
+    setState(() {
+      _passwordValid = value != null && value.length >= 6;
+    });
+  }
+
+  Future<void> _register() async {
+    if (!_emailValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email')),
+      );
+      return;
+    }
+    if (!_passwordValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 6 characters')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final uri = Uri.parse("http://localhost:4000/api/auth/register");
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json; charset=UTF-8",
+          "platform": Platform.isIOS ? "ios" : "android",
+          "device-type": "mobile",
+          "app-version": "1.0.0",
+        },
+        body: jsonEncode({
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+        }),
+      );
+
+      final decoded = jsonDecode(response.body);
+      print('REGISTER RESPONSE: status=${response.statusCode}, body=$decoded');
+
+      final data = decoded['data'];
+      final tokens = data?['tokens'];
+      if (response.statusCode == 201 && tokens != null && tokens['accessToken'] != null) {
+        print('REGISTER SUCCESS: token=${tokens['accessToken']}');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', tokens['accessToken']);
+        await prefs.setString('refresh_token', tokens['refreshToken'] ?? '');
+        print('TOKENS SAVED: access_token and refresh_token saved to prefs');
+
+        if (mounted) {
+          print('NAVIGATING TO HOMESCREEN...');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Registration successful!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+          // Small delay to show toast before navigation
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
+      } else {
+        print('REGISTER FAILED: status=${response.statusCode}, message=${decoded['message']}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(decoded['message'] ?? 'Registration failed'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
 }

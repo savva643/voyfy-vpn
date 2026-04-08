@@ -1,18 +1,24 @@
 {
   "name": "voyfy-backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Minimal backend for Voyfy VPN (auth placeholder + VPN servers list API).",
+  "description": "Voyfy VPN Backend API with Xray VLESS+REALITY support",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "init-db": "node src/scripts/init-db.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
-    "node-fetch": "^2.7.0"
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.13.0",
+    "uuid": "^9.0.1",
+    "winston": "^3.14.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
