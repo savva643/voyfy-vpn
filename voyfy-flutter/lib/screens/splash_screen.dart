@@ -23,10 +23,10 @@ class _SplashScreenState extends State<SplashScreen> {
     final tk = prefs.getString('access_token');
     final refresh = prefs.getString('refresh_token');
 
+    // Step 1: Try to validate existing access token
     if (tk != null && tk.isNotEmpty) {
       try {
-        final uri =
-            Uri.parse('http://localhost:4000/api/auth/validate-session');
+        final uri = Uri.parse('http://localhost:4000/api/auth/validate-session');
         final res = await http.post(
           uri,
           headers: {
@@ -47,12 +47,15 @@ class _SplashScreenState extends State<SplashScreen> {
           }
           return;
         }
-      } catch (_) {
-        // ignore and try refresh
+        // If 401/403, token is expired - will try refresh below
+      } catch (e) {
+        // Network error - will try refresh below
+        debugPrint('Session validation error: $e');
       }
     }
 
-    if ((tk == null || tk.isEmpty) && refresh != null && refresh.isNotEmpty) {
+    // Step 2: Try to refresh token (if access token missing OR invalid)
+    if (refresh != null && refresh.isNotEmpty) {
       try {
         final uri = Uri.parse('http://localhost:4000/api/auth/refresh');
         final res = await http.post(
@@ -60,14 +63,19 @@ class _SplashScreenState extends State<SplashScreen> {
           headers: {
             'Content-Type': 'application/json; charset=UTF-8',
           },
-          body: '{"refreshToken":"$refresh"}',
+          body: jsonEncode({'refreshToken': refresh}),
         );
 
         if (res.statusCode == 200) {
           final decoded = jsonDecode(res.body.toString());
-          final newToken = decoded['token'];
+          final newToken = decoded['token'] ?? decoded['access_token'];
+          final newRefresh = decoded['refresh_token'];
+
           if (newToken != null) {
             await prefs.setString('access_token', newToken);
+            if (newRefresh != null) {
+              await prefs.setString('refresh_token', newRefresh);
+            }
             if (mounted) {
               Navigator.pushReplacement(
                 context,
@@ -77,11 +85,12 @@ class _SplashScreenState extends State<SplashScreen> {
             return;
           }
         }
-      } catch (_) {
-        // ignore
+      } catch (e) {
+        debugPrint('Token refresh error: $e');
       }
     }
 
+    // Step 3: Clear tokens and go to login
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
     if (mounted) {
@@ -201,67 +210,61 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Widget _buildDesktopLayout(Size size) {
-    return Row(
+    return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // Logo
         Container(
-          width: 80,
-          height: 80,
+          width: 120,
+          height: 120,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0038FF).withOpacity(0.15),
-                blurRadius: 30,
-                spreadRadius: 5,
-                offset: const Offset(0, 10),
+                color: const Color(0xFF0038FF).withOpacity(0.2),
+                blurRadius: 50,
+                spreadRadius: 10,
+                offset: const Offset(0, 15),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(30),
             child: Image.asset(
               'assets/images/logo.png',
               fit: BoxFit.contain,
             ),
           ),
         ),
-        const SizedBox(width: 24),
-        // Brand Name and Tagline
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'VoyFy',
-              style: TextStyle(
-                fontSize: 48,
-                fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0038FF),
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Secure VPN Connection',
-              style: TextStyle(
-                fontSize: 16,
-                fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w400,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
+        const SizedBox(height: 32),
+        // Brand Name
+        const Text(
+          'VoyFy',
+          style: TextStyle(
+            fontSize: 56,
+            fontFamily: 'Gilroy',
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0038FF),
+            letterSpacing: 2,
+          ),
         ),
-        const SizedBox(width: 40),
+        const SizedBox(height: 8),
+        Text(
+          'Secure VPN Connection',
+          style: TextStyle(
+            fontSize: 18,
+            fontFamily: 'Gilroy',
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 48),
         // Loading Indicator
         SizedBox(
-          width: 28,
-          height: 28,
+          width: 36,
+          height: 36,
           child: CircularProgressIndicator(
-            strokeWidth: 2.5,
+            strokeWidth: 3,
             valueColor: AlwaysStoppedAnimation<Color>(
               const Color(0xFF0038FF).withOpacity(0.8),
             ),

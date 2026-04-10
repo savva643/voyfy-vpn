@@ -491,7 +491,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', tokens['accessToken']);
         await prefs.setString('refresh_token', tokens['refreshToken'] ?? '');
-        print('TOKENS SAVED: access_token and refresh_token saved to prefs');
+        await prefs.setString('email', email);
+        await prefs.setString('subscription_type', data?['subscription'] ?? 'Free');
+        print('TOKENS SAVED: access_token, refresh_token, email, subscription_type saved to prefs');
 
         if (mounted) {
           print('NAVIGATING TO HOMESCREEN...');

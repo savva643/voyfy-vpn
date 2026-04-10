@@ -8,7 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
 
-const kColorBg = Color(0xffE6E7F0);
+const kGradientStart = Color(0xFF0038FF);
+const kGradientEnd = Color(0xFF8220F9);
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({Key? key}) : super(key: key);
@@ -35,9 +36,38 @@ class _AccountScreenState extends State<AccountScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       email = prefs.getString('email') ?? 'user@example.com';
-      subscriptionType = prefs.getString('subscription_type') ?? 'Free';
       isLoading = false;
     });
+    // Fetch real subscription status from backend
+    await _fetchSubscriptionStatus();
+  }
+
+  Future<void> _fetchSubscriptionStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return;
+
+      final response = await http.get(
+        Uri.parse('http://localhost:4000/api/user/subscription'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          subscriptionType = data['subscription_type'] ?? 'Free';
+          subscriptionStatus = data['status'] ?? 'Active';
+        });
+        // Save to prefs for other screens
+        await prefs.setString('subscription_type', subscriptionType);
+      }
+    } catch (e) {
+      print('Error fetching subscription: $e');
+    }
   }
 
   Future<void> _logout() async {
@@ -59,72 +89,208 @@ class _AccountScreenState extends State<AccountScreen> {
     final isDesktopView = isDesktop;
 
     return Scaffold(
-      backgroundColor: kColorBg,
-      body: SafeArea(
-        child: isDesktopView ? _buildDesktopLayout() : _buildMobileLayout(),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [kGradientStart, kGradientEnd],
+          ),
+        ),
+        child: SafeArea(
+          child: isDesktopView ? _buildDesktopLayout() : _buildMobileLayout(),
+        ),
       ),
     );
   }
 
   Widget _buildMobileLayout() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 24),
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 8),
+                  _buildProfileCard(),
+                  const SizedBox(height: 24),
+                  _buildSubscriptionCard(),
+                  const SizedBox(height: 24),
+                  _buildSettingsList(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    return Column(
+      children: [
+        // AppBar on top with gradient background
+        _buildDesktopTopHeader(),
+        const SizedBox(height: 24),
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(32),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left Column - Profile
+                        Expanded(
+                          flex: 1,
+                          child: Column(
+                            children: [
+                              _buildProfileCard(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        // Right Column - Subscription + Settings
+                        Expanded(
+                          flex: 1,
+                          child: Column(
+                            children: [
+                              _buildSubscriptionCard(),
+                              const SizedBox(height: 24),
+                              _buildSettingsList(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildDesktopTopHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      child: Row(
         children: [
-          _buildHeader(),
-          const SizedBox(height: 30),
-          _buildProfileCard(),
-          const SizedBox(height: 24),
-          _buildSubscriptionCard(),
-          const SizedBox(height: 24),
-          _buildSettingsList(),
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(30),
+            child: InkWell(
+              onTap: () => Navigator.pop(context),
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Text(
+              'account'.tr(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 28,
+                fontFamily: 'Gilroy',
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 64),
         ],
       ),
     );
   }
 
-  Widget _buildDesktopLayout() {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 600),
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 40),
-            _buildProfileCard(),
-            const SizedBox(height: 24),
-            _buildSubscriptionCard(),
-            const SizedBox(height: 24),
-            _buildSettingsList(),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeader() {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-        ),
-        const Expanded(
-          child: Text(
-            'Account',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 20,
-              fontFamily: 'Gilroy',
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(30),
+            child: InkWell(
+              onTap: () => Navigator.pop(context),
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 40),
-      ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'account'.tr(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 20,
+                fontFamily: 'Gilroy',
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 56),
+        ],
+      ),
     );
   }
 
@@ -168,7 +334,7 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            email.isNotEmpty ? email.split('@').first : 'User',
+            email.isNotEmpty ? email.split('@').first : 'user'.tr(),
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
@@ -231,9 +397,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Subscription',
-                      style: TextStyle(
+                    Text(
+                      'subscription'.tr(),
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.grey,
                         fontFamily: 'Gilroy',
@@ -241,7 +407,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isPremium ? 'VoyFy Premium' : 'VoyFy Free',
+                      isPremium ? 'voyfy_premium'.tr() : 'voyfy_free'.tr(),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -289,9 +455,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'Upgrade to Premium',
-                  style: TextStyle(
+                child: Text(
+                  'upgrade_to_premium'.tr(),
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'Gilroy',
@@ -321,45 +487,18 @@ class _AccountScreenState extends State<AccountScreen> {
       child: Column(
         children: [
           _buildSettingsTile(
-            icon: Icons.edit,
-            iconColor: const Color(0xFF0038FF),
-            title: 'Edit Profile',
-            onTap: () {
-              // Navigate to edit profile
-            },
-          ),
-          const Divider(height: 1, indent: 70),
-          _buildSettingsTile(
             icon: Icons.lock_outline,
             iconColor: const Color(0xFF8220F9),
-            title: 'Change Password',
+            title: 'change_password'.tr(),
             onTap: () {
               // Navigate to change password
             },
           ),
           const Divider(height: 1, indent: 70),
           _buildSettingsTile(
-            icon: Icons.notifications_outlined,
-            iconColor: Colors.orange,
-            title: 'Notifications',
-            onTap: () {
-              // Navigate to notifications
-            },
-          ),
-          const Divider(height: 1, indent: 70),
-          _buildSettingsTile(
-            icon: Icons.help_outline,
-            iconColor: const Color(0xff28C0C1),
-            title: 'Help & Support',
-            onTap: () {
-              // Navigate to help
-            },
-          ),
-          const Divider(height: 1, indent: 70),
-          _buildSettingsTile(
             icon: Icons.logout,
             iconColor: Colors.red,
-            title: 'Log Out',
+            title: 'logout'.tr(),
             titleColor: Colors.red,
             showArrow: false,
             onTap: () => _showLogoutDialog(),
@@ -417,25 +556,25 @@ class _AccountScreenState extends State<AccountScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Log Out',
-          style: TextStyle(
+        title: Text(
+          'logout'.tr(),
+          style: const TextStyle(
             fontFamily: 'Gilroy',
             fontWeight: FontWeight.w700,
           ),
         ),
-        content: const Text(
-          'Are you sure you want to log out?',
-          style: TextStyle(
+        content: Text(
+          'logout_confirm'.tr(),
+          style: const TextStyle(
             fontFamily: 'Gilroy',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
+            child: Text(
+              'cancel'.tr(),
+              style: const TextStyle(
                 color: Colors.grey,
                 fontFamily: 'Gilroy',
               ),
@@ -453,9 +592,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            child: const Text(
-              'Log Out',
-              style: TextStyle(
+            child: Text(
+              'logout'.tr(),
+              style: const TextStyle(
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w600,
               ),

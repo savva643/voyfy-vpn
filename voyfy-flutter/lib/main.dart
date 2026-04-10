@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/servers_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/theme_provider.dart';
 import 'providers/vpn_provider.dart';
 import 'services/api_service.dart';
 import 'theme/app_theme.dart';
@@ -14,7 +15,7 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
-  
+
   // Initialize API service
   await ApiService.initialize();
 
@@ -43,16 +44,22 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => VpnProvider()),
         ChangeNotifierProvider(create: (_) => ServersProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        localizationsDelegates: context.localizationDelegates,
-        supportedLocales: context.supportedLocales,
-        locale: context.locale,
-        debugShowCheckedModeBanner: false,
-        title: 'Voyfy VPN',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.lightTheme,
-        home: const AppInitializer(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            localizationsDelegates: context.localizationDelegates,
+            supportedLocales: context.supportedLocales,
+            locale: context.locale,
+            debugShowCheckedModeBanner: false,
+            title: 'Voyfy VPN',
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const AppInitializer(),
+          );
+        },
       ),
     );
   }
@@ -81,6 +88,10 @@ class _AppInitializerState extends State<AppInitializer> {
     final authProvider = context.read<AuthProvider>();
     final vpnProvider = context.read<VpnProvider>();
     final serversProvider = context.read<ServersProvider>();
+    final themeProvider = context.read<ThemeProvider>();
+
+    // Initialize theme
+    await themeProvider.initialize();
 
     // Initialize auth (check for existing session)
     await authProvider.initialize();

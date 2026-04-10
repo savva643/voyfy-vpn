@@ -170,4 +170,181 @@ class AppTheme {
       ),
     );
   }
+
+  /// Dark Theme
+  static ThemeData get darkTheme {
+    // Dark colors
+    const Color primaryColor = Color(0xFF8220F9);
+    const Color accentColor = Color(0xFF0038FF);
+    const Color scaffoldBackground = Color(0xFF121212);
+    const Color cardBackground = Color(0xFF1E1E1E);
+    const Color textPrimary = Colors.white;
+    const Color textSecondary = Color(0xFFB0B0B0);
+    const Color dividerColor = Color(0xFF2C2C2C);
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: scaffoldBackground,
+      fontFamily: 'Gilroy',
+
+      // Color Scheme
+      colorScheme: const ColorScheme.dark(
+        primary: primaryColor,
+        secondary: accentColor,
+        surface: cardBackground,
+        background: scaffoldBackground,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: textPrimary,
+        onBackground: textPrimary,
+      ),
+
+      // AppBar Theme
+      appBarTheme: const AppBarTheme(
+        elevation: 0,
+        centerTitle: true,
+        backgroundColor: scaffoldBackground,
+        foregroundColor: textPrimary,
+        titleTextStyle: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+        ),
+      ),
+
+      // Card Theme
+      cardTheme: CardThemeData(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        color: cardBackground,
+      ),
+
+      // Elevated Button Theme
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+
+      // Outlined Button Theme
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          side: const BorderSide(color: primaryColor, width: 2),
+          foregroundColor: primaryColor,
+          textStyle: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+
+      // Text Button Theme
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primaryColor,
+          textStyle: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+
+      // Text Theme
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 34,
+          fontWeight: FontWeight.w900,
+          color: textPrimary,
+          letterSpacing: 2,
+        ),
+        displayMedium: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 30,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+          letterSpacing: 2,
+        ),
+        titleLarge: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+        ),
+        bodyLarge: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
+        bodyMedium: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 16,
+          fontWeight: FontWeight.w400,
+          color: textPrimary,
+        ),
+        bodySmall: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 14,
+          fontWeight: FontWeight.w300,
+          color: textSecondary,
+        ),
+      ),
+
+      // Divider Theme
+      dividerTheme: const DividerThemeData(
+        color: dividerColor,
+        thickness: 1,
+      ),
+
+      // List Tile Theme
+      listTileTheme: const ListTileThemeData(
+        iconColor: textSecondary,
+        textColor: textPrimary,
+      ),
+
+      // SnackBar Theme
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: cardBackground,
+        contentTextStyle: const TextStyle(
+          fontFamily: 'Gilroy',
+          color: textPrimary,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+
+      // Bottom Navigation Bar Theme
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: cardBackground,
+        selectedItemColor: primaryColor,
+        unselectedItemColor: textSecondary,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+      ),
+    );
+  }
 }

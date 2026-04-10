@@ -317,8 +317,8 @@ class _RegScreenState extends State<RegScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text(
-                      'Register',
+                  : Text(
+                      'register'.tr(),
                       style: TextStyle(
                         fontSize: 18,
                         fontFamily: 'Gilroy',

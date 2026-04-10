@@ -66,8 +66,8 @@ class AuthProvider extends ChangeNotifier {
       _state = AuthState.error;
     }
     
-    // Only notify if we're still mounted - this prevents setState errors
-    // The UI will read the updated state on next frame
+    // Notify listeners to update UI with auth state
+    notifyListeners();
   }
 
   /// Login with email and password
