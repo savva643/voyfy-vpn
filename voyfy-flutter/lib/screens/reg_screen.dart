@@ -10,6 +10,7 @@ import 'package:simple_gradient_text/simple_gradient_text.dart';
 import 'package:http/http.dart' as http;
 
 import 'home_screen.dart';
+import '../services/api_service.dart';
 
 class RegScreen extends StatefulWidget {
   const RegScreen({Key? key}) : super(key: key);
@@ -18,6 +19,10 @@ class RegScreen extends StatefulWidget {
 }
 
 const kColorBg = Color(0xffE6E7F0);
+const kColorBgDark = Color(0xFF0B1220);
+const kColorCardDark = Color(0xFF1A1A2E);
+const kColorTextDark = Colors.white;
+const kColorTextMutedDark = Color(0xFF94A3B8);
 
 class _RegScreenState extends State<RegScreen> {
   final _emailController = TextEditingController();
@@ -41,18 +46,19 @@ class _RegScreenState extends State<RegScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktopView = isDesktop;
     final isTabletView = isTablet;
+    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: kColorBg,
+      backgroundColor: isDarkMode ? kColorBgDark : kColorBg,
       body: SafeArea(
         child: isDesktopView || isTabletView
-            ? _buildDesktopLayout(size)
-            : _buildMobileLayout(size),
+            ? _buildDesktopLayout(size, isDarkMode)
+            : _buildMobileLayout(size, isDarkMode),
       ),
     );
   }
 
-  Widget _buildMobileLayout(Size size) {
+  Widget _buildMobileLayout(Size size, bool isDarkMode) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
       child: ConstrainedBox(
@@ -60,7 +66,7 @@ class _RegScreenState extends State<RegScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLogoSection(size, isMobile: true),
+            _buildLogoSection(size, isMobile: true, isDarkMode: isDarkMode),
             const SizedBox(height: 24),
             Text(
               'Create Account',
@@ -70,18 +76,18 @@ class _RegScreenState extends State<RegScreen> {
                 fontSize: 28,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w700,
-                color: const Color(0xff000000),
+                color: isDarkMode ? Colors.white : const Color(0xff000000),
               ),
             ),
             const SizedBox(height: 32),
-            _buildRegisterForm(size, isMobile: true),
+            _buildRegisterForm(size, isMobile: true, isDarkMode: isDarkMode),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDesktopLayout(Size size) {
+  Widget _buildDesktopLayout(Size size, bool isDarkMode) {
     return Row(
       children: [
         // Left side - Branding
@@ -92,30 +98,38 @@ class _RegScreenState extends State<RegScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0038FF),
-                  const Color(0xFF8220F9),
-                ],
+                colors: isDarkMode
+                    ? [
+                        const Color(0xFF1A1A2E),
+                        const Color(0xFF0B1220),
+                      ]
+                    : [
+                        const Color(0xFF0038FF),
+                        const Color(0xFF8220F9),
+                      ],
               ),
             ),
             child: Center(
-              child: _buildLogoSection(size, isMobile: false),
+              child: _buildLogoSection(size, isMobile: false, isDarkMode: isDarkMode),
             ),
           ),
         ),
         // Right side - Register form
         Expanded(
           flex: 1,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(48),
-            child: _buildRegisterForm(size, isMobile: false),
+          child: Container(
+            color: isDarkMode ? kColorBgDark : kColorBg,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(48),
+              child: _buildRegisterForm(size, isMobile: false, isDarkMode: isDarkMode),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLogoSection(Size size, {required bool isMobile}) {
+  Widget _buildLogoSection(Size size, {required bool isMobile, required bool isDarkMode}) {
     if (isMobile) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -127,7 +141,7 @@ class _RegScreenState extends State<RegScreen> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0038FF).withOpacity(0.2),
+                  color: const Color(0xFF0038FF).withOpacity(isDarkMode ? 0.4 : 0.2),
                   blurRadius: 20,
                   spreadRadius: 2,
                 ),
@@ -142,14 +156,14 @@ class _RegScreenState extends State<RegScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'VoyFy',
             style: TextStyle(
               letterSpacing: 2,
               fontSize: 32,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w900,
-              color: Color(0xff000000),
+              color: isDarkMode ? Colors.white : const Color(0xff000000),
             ),
           ),
           const SizedBox(height: 8),
@@ -159,7 +173,7 @@ class _RegScreenState extends State<RegScreen> {
               fontSize: 14,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w400,
-              color: Colors.grey.shade600,
+              color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade600,
             ),
           ),
         ],
@@ -175,7 +189,7 @@ class _RegScreenState extends State<RegScreen> {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.2),
+                  color: isDarkMode ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -190,14 +204,14 @@ class _RegScreenState extends State<RegScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'VoyFy',
             style: TextStyle(
               letterSpacing: 3,
               fontSize: 48,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w900,
-              color: Colors.white,
+              color: isDarkMode ? Colors.white : Colors.white,
             ),
           ),
           const SizedBox(height: 12),
@@ -207,7 +221,7 @@ class _RegScreenState extends State<RegScreen> {
               fontSize: 16,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w400,
-              color: Colors.white.withOpacity(0.8),
+              color: isDarkMode ? kColorTextMutedDark : Colors.white.withOpacity(0.8),
             ),
           ),
         ],
@@ -215,7 +229,7 @@ class _RegScreenState extends State<RegScreen> {
     }
   }
 
-  Widget _buildRegisterForm(Size size, {required bool isMobile}) {
+  Widget _buildRegisterForm(Size size, {required bool isMobile, required bool isDarkMode}) {
     final maxWidth = isMobile ? double.infinity : 400.0;
 
     return Container(
@@ -227,15 +241,15 @@ class _RegScreenState extends State<RegScreen> {
             controller: _emailController,
             onChanged: _validateEmail,
             keyboardType: TextInputType.emailAddress,
-            style: const TextStyle(
-              color: Colors.black,
+            style: TextStyle(
+              color: isDarkMode ? Colors.white : Colors.black,
               fontFamily: 'Gilroy',
               fontSize: 16,
             ),
-            cursorColor: Colors.grey,
+            cursorColor: isDarkMode ? kColorTextMutedDark : Colors.grey,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDarkMode ? kColorCardDark : Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -251,7 +265,7 @@ class _RegScreenState extends State<RegScreen> {
               ),
               hintText: 'Email',
               hintStyle: TextStyle(
-                color: Colors.grey.shade500,
+                color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade500,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w400,
                 fontSize: 16,
@@ -263,15 +277,15 @@ class _RegScreenState extends State<RegScreen> {
             controller: _passwordController,
             onChanged: _validatePassword,
             obscureText: true,
-            style: const TextStyle(
-              color: Colors.black,
+            style: TextStyle(
+              color: isDarkMode ? Colors.white : Colors.black,
               fontFamily: 'Gilroy',
               fontSize: 16,
             ),
-            cursorColor: Colors.grey,
+            cursorColor: isDarkMode ? kColorTextMutedDark : Colors.grey,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDarkMode ? kColorCardDark : Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -287,7 +301,7 @@ class _RegScreenState extends State<RegScreen> {
               ),
               hintText: 'Password',
               hintStyle: TextStyle(
-                color: Colors.grey.shade500,
+                color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade500,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w400,
                 fontSize: 16,
@@ -338,10 +352,10 @@ class _RegScreenState extends State<RegScreen> {
                 ),
               );
             },
-            child: const Text(
+            child: Text(
               'Already have an account? Log in',
               style: TextStyle(
-                color: Color(0xff0038FF),
+                color: isDarkMode ? Colors.white : const Color(0xff0038FF),
                 fontSize: 14,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w500,
@@ -406,9 +420,7 @@ class _RegScreenState extends State<RegScreen> {
       final tokens = data?['tokens'];
       if (response.statusCode == 201 && tokens != null && tokens['accessToken'] != null) {
         print('REGISTER SUCCESS: token=${tokens['accessToken']}');
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', tokens['accessToken']);
-        await prefs.setString('refresh_token', tokens['refreshToken'] ?? '');
+        await ApiService.setTokens(tokens['accessToken'], tokens['refreshToken'] ?? '');
         print('TOKENS SAVED: access_token and refresh_token saved to prefs');
 
         if (mounted) {

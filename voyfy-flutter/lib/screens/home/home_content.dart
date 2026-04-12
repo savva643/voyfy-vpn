@@ -38,13 +38,14 @@ class HomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return isDesktop ? _buildDesktopLayout() : _buildMobileLayout();
+    return isDesktop ? _buildDesktopLayout(context) : _buildMobileLayout(context);
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
-      children: [
-        _buildHeader(),
+      children: [ 
+        _buildHeader(context),
         SizedBox(
           height: 240,
           child: ConnectionButton(
@@ -55,11 +56,13 @@ class HomeContent extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
             margin: const EdgeInsets.only(top: 16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
             ),
             child: Column(
               children: [
@@ -132,7 +135,8 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildDesktopLayout() {
+  Widget _buildDesktopLayout(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Expanded(
@@ -156,11 +160,13 @@ class HomeContent extends StatelessWidget {
         ),
         Expanded(
           flex: 1,
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
             margin: const EdgeInsets.only(left: 1),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.horizontal(left: Radius.circular(30)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
             ),
             child: Padding(
               padding: const EdgeInsets.all(30),
@@ -236,7 +242,8 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -246,10 +253,10 @@ class HomeContent extends StatelessWidget {
             children: [
               Image.asset('assets/images/logo.png', width: 26),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'VoyFy',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: isDark ? Colors.white : Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'Gilroy',

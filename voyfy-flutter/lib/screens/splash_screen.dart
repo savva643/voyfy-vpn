@@ -21,78 +21,19 @@ class _SplashScreenState extends State<SplashScreen> {
     final prefs = await SharedPreferences.getInstance();
 
     final tk = prefs.getString('access_token');
-    final refresh = prefs.getString('refresh_token');
 
-    // Step 1: Try to validate existing access token
+    // Simply check if token exists - no backend validation to avoid issues
     if (tk != null && tk.isNotEmpty) {
-      try {
-        final uri = Uri.parse('http://localhost:4000/api/auth/validate-session');
-        final res = await http.post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json; charset=UTF-8',
-            'Authorization': 'Bearer $tk',
-            'platform': Platform.isIOS ? 'ios' : 'android',
-            'device-type': 'mobile',
-            'app-version': '1.0.0',
-          },
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
-
-        if (res.statusCode == 200) {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const HomeScreen()),
-            );
-          }
-          return;
-        }
-        // If 401/403, token is expired - will try refresh below
-      } catch (e) {
-        // Network error - will try refresh below
-        debugPrint('Session validation error: $e');
       }
+      return;
     }
 
-    // Step 2: Try to refresh token (if access token missing OR invalid)
-    if (refresh != null && refresh.isNotEmpty) {
-      try {
-        final uri = Uri.parse('http://localhost:4000/api/auth/refresh');
-        final res = await http.post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json; charset=UTF-8',
-          },
-          body: jsonEncode({'refreshToken': refresh}),
-        );
-
-        if (res.statusCode == 200) {
-          final decoded = jsonDecode(res.body.toString());
-          final newToken = decoded['token'] ?? decoded['access_token'];
-          final newRefresh = decoded['refresh_token'];
-
-          if (newToken != null) {
-            await prefs.setString('access_token', newToken);
-            if (newRefresh != null) {
-              await prefs.setString('refresh_token', newRefresh);
-            }
-            if (mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const HomeScreen()),
-              );
-            }
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('Token refresh error: $e');
-      }
-    }
-
-    // Step 3: Clear tokens and go to login
-    await prefs.remove('access_token');
-    await prefs.remove('refresh_token');
+    // No token - go to login
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -115,32 +56,38 @@ class _SplashScreenState extends State<SplashScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 900;
     final isTablet = size.width > 600 && size.width <= 900;
+    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
     
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDarkMode ? const Color(0xFF0B1220) : Colors.white,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.white,
-              const Color(0xFFF8F9FF),
-            ],
+            colors: isDarkMode
+                ? [
+                    const Color(0xFF0B1220),
+                    const Color(0xFF1A1A2E),
+                  ]
+                : [
+                    Colors.white,
+                    const Color(0xFFF8F9FF),
+                  ],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: isDesktop || isTablet
-                ? _buildDesktopLayout(size)
-                : _buildMobileLayout(size),
+                ? _buildDesktopLayout(size, isDarkMode)
+                : _buildMobileLayout(size, isDarkMode),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMobileLayout(Size size) {
+  Widget _buildMobileLayout(Size size, bool isDarkMode) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -152,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen> {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0038FF).withOpacity(0.15),
+                color: const Color(0xFF0038FF).withOpacity(isDarkMode ? 0.4 : 0.15),
                 blurRadius: 30,
                 spreadRadius: 5,
                 offset: const Offset(0, 10),
@@ -171,13 +118,13 @@ class _SplashScreenState extends State<SplashScreen> {
         // Brand Name
         Column(
           children: [
-            const Text(
+            Text(
               'VoyFy',
               style: TextStyle(
                 fontSize: 42,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0038FF),
+                color: isDarkMode ? Colors.white : const Color(0xFF0038FF),
                 letterSpacing: 1.5,
               ),
             ),
@@ -188,7 +135,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 fontSize: 14,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w400,
-                color: Colors.grey.shade600,
+                color: isDarkMode ? Colors.white.withOpacity(0.6) : Colors.grey.shade600,
               ),
             ),
           ],
@@ -201,7 +148,7 @@ class _SplashScreenState extends State<SplashScreen> {
           child: CircularProgressIndicator(
             strokeWidth: 3,
             valueColor: AlwaysStoppedAnimation<Color>(
-              const Color(0xFF0038FF).withOpacity(0.8),
+              isDarkMode ? Colors.white : const Color(0xFF0038FF),
             ),
           ),
         ),
@@ -209,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
-  Widget _buildDesktopLayout(Size size) {
+  Widget _buildDesktopLayout(Size size, bool isDarkMode) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -221,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen> {
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0038FF).withOpacity(0.2),
+                color: const Color(0xFF0038FF).withOpacity(isDarkMode ? 0.5 : 0.2),
                 blurRadius: 50,
                 spreadRadius: 10,
                 offset: const Offset(0, 15),
@@ -238,13 +185,13 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
         const SizedBox(height: 32),
         // Brand Name
-        const Text(
+        Text(
           'VoyFy',
           style: TextStyle(
             fontSize: 56,
             fontFamily: 'Gilroy',
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0038FF),
+            color: isDarkMode ? Colors.white : const Color(0xFF0038FF),
             letterSpacing: 2,
           ),
         ),
@@ -255,7 +202,7 @@ class _SplashScreenState extends State<SplashScreen> {
             fontSize: 18,
             fontFamily: 'Gilroy',
             fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
+            color: isDarkMode ? Colors.white.withOpacity(0.6) : Colors.grey.shade600,
           ),
         ),
         const SizedBox(height: 48),
@@ -266,7 +213,7 @@ class _SplashScreenState extends State<SplashScreen> {
           child: CircularProgressIndicator(
             strokeWidth: 3,
             valueColor: AlwaysStoppedAnimation<Color>(
-              const Color(0xFF0038FF).withOpacity(0.8),
+              isDarkMode ? Colors.white : const Color(0xFF0038FF),
             ),
           ),
         ),

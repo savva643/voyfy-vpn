@@ -5,10 +5,13 @@ import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_vpni/screens/aboutsub_sccreen.dart';
 import 'package:flutter_vpni/screens/account_sccreen.dart';
 import 'package:flutter_vpni/screens/change_language.dart';
 import 'package:flutter_vpni/screens/login_screen.dart';
+import 'package:flutter_vpni/screens/privacy_policy_screen.dart';
 import 'package:flutter_vpni/screens/server_location.dart';
+import 'package:flutter_vpni/screens/terms_of_service_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -120,7 +123,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final res = await http.get(uri);
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body.toString());
-        final list = decoded['servers'] as List<dynamic>? ?? [];
+        final list = decoded['success'] != null && decoded['data'] != null
+            ? decoded['data']['servers'] as List<dynamic>?
+            : decoded['servers'] as List<dynamic>? ?? [];
         final server = list.firstWhere(
               (s) => s['serverId'] == serverId,
           orElse: () => null,
@@ -128,8 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
         if (server != null) {
           setState(() {
             idserv = serverId;
-            am = AssetImage(server["src"]);
-            nameserver = server["name"].toString().tr();
+            // Use online flag images from flagcdn.com
+            am = AssetImage('assets/images/placeholder.png'); // Fallback
+            nameserver = server["name"].toString();
             isfree = server["isFree"] == true;
           });
           return;
@@ -235,15 +241,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 600;
     final isTablet = false;
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDarkMode = themeProvider.isDarkMode;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          gradient: isDarkMode
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: isDesktop
@@ -289,7 +305,9 @@ class _HomeScreenState extends State<HomeScreen> {
           currentLanguage: currentLanguage,
           onLanguageTap: () => navigateToScreen(const ChangeLanguage()),
           onProfileTap: () => navigateToScreen(const AccountScreen()),
-          onSubscriptionTap: () => navigateToScreen(const AccountScreen()),
+          onSubscriptionTap: () => navigateToScreen(const AboutsubScreen()),
+          onPrivacyPolicyTap: () => navigateToScreen(const PrivacyPolicyScreen()),
+          onTermsOfServiceTap: () => navigateToScreen(const TermsOfServiceScreen()),
           onLogoutTap: showLogoutDialog,
         );
       default:

@@ -11,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
 
+import '../services/api_service.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
   @override
@@ -19,6 +21,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 const kColorBg = Color(0xffE6E7F0);
+const kColorBgDark = Color(0xFF0B1220);
+const kColorCardDark = Color(0xFF1A1A2E);
+const kColorTextDark = Colors.white;
+const kColorTextMutedDark = Color(0xFF94A3B8);
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -33,18 +39,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktopView = isDesktop;
     final isTabletView = isTablet;
+    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
     
     return Scaffold(
-      backgroundColor: kColorBg,
+      backgroundColor: isDarkMode ? kColorBgDark : kColorBg,
       body: SafeArea(
         child: isDesktopView || isTabletView
-            ? _buildDesktopLayout(size)
-            : _buildMobileLayout(size),
+            ? _buildDesktopLayout(size, isDarkMode)
+            : _buildMobileLayout(size, isDarkMode),
       ),
     );
   }
 
-  Widget _buildMobileLayout(Size size) {
+  Widget _buildMobileLayout(Size size, bool isDarkMode) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
       child: ConstrainedBox(
@@ -52,16 +59,16 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLogoSection(size, isMobile: true),
+            _buildLogoSection(size, isMobile: true, isDarkMode: isDarkMode),
             const SizedBox(height: 32),
-            _buildLoginForm(size, isMobile: true),
+            _buildLoginForm(size, isMobile: true, isDarkMode: isDarkMode),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDesktopLayout(Size size) {
+  Widget _buildDesktopLayout(Size size, bool isDarkMode) {
     return Row(
       children: [
         // Left side - Branding
@@ -72,30 +79,38 @@ class _LoginScreenState extends State<LoginScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0038FF),
-                  const Color(0xFF8220F9),
-                ],
+                colors: isDarkMode
+                    ? [
+                        const Color(0xFF1A1A2E),
+                        const Color(0xFF0B1220),
+                      ]
+                    : [
+                        const Color(0xFF0038FF),
+                        const Color(0xFF8220F9),
+                      ],
               ),
             ),
             child: Center(
-              child: _buildLogoSection(size, isMobile: false),
+              child: _buildLogoSection(size, isMobile: false, isDarkMode: isDarkMode),
             ),
           ),
         ),
         // Right side - Login form
         Expanded(
           flex: 1,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(48),
-            child: _buildLoginForm(size, isMobile: false),
+          child: Container(
+            color: isDarkMode ? kColorBgDark : kColorBg,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(48),
+              child: _buildLoginForm(size, isMobile: false, isDarkMode: isDarkMode),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLogoSection(Size size, {required bool isMobile}) {
+  Widget _buildLogoSection(Size size, {required bool isMobile, required bool isDarkMode}) {
     if (isMobile) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -107,7 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0038FF).withOpacity(0.2),
+                  color: const Color(0xFF0038FF).withOpacity(isDarkMode ? 0.4 : 0.2),
                   blurRadius: 20,
                   spreadRadius: 2,
                 ),
@@ -122,14 +137,14 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'VoyFy',
             style: TextStyle(
               letterSpacing: 2,
               fontSize: 32,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w900,
-              color: Color(0xff000000),
+              color: isDarkMode ? Colors.white : const Color(0xff000000),
             ),
           ),
           const SizedBox(height: 8),
@@ -139,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
               fontSize: 14,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w400,
-              color: Colors.grey.shade600,
+              color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade600,
             ),
           ),
         ],
@@ -155,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.2),
+                  color: isDarkMode ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -170,14 +185,14 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'VoyFy',
             style: TextStyle(
               letterSpacing: 3,
               fontSize: 48,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w900,
-              color: Colors.white,
+              color: isDarkMode ? Colors.white : Colors.white,
             ),
           ),
           const SizedBox(height: 12),
@@ -187,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
               fontSize: 16,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w400,
-              color: Colors.white.withOpacity(0.8),
+              color: isDarkMode ? kColorTextMutedDark : Colors.white.withOpacity(0.8),
             ),
           ),
         ],
@@ -195,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget _buildLoginForm(Size size, {required bool isMobile}) {
+  Widget _buildLoginForm(Size size, {required bool isMobile, required bool isDarkMode}) {
     final maxWidth = isMobile ? double.infinity : 400.0;
     
     return Container(
@@ -206,15 +221,15 @@ class _LoginScreenState extends State<LoginScreen> {
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
-            style: const TextStyle(
-              color: Colors.black,
+            style: TextStyle(
+              color: isDarkMode ? Colors.white : Colors.black,
               fontFamily: 'Gilroy',
               fontSize: 16,
             ),
-            cursorColor: Colors.grey,
+            cursorColor: isDarkMode ? kColorTextMutedDark : Colors.grey,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDarkMode ? kColorCardDark : Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -230,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               hintText: 'Email',
               hintStyle: TextStyle(
-                color: Colors.grey.shade500,
+                color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade500,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w400,
                 fontSize: 16,
@@ -242,15 +257,15 @@ class _LoginScreenState extends State<LoginScreen> {
             controller: _passwordController,
             obscureText: _passwordVisible,
             textInputAction: TextInputAction.done,
-            style: const TextStyle(
-              color: Colors.black,
+            style: TextStyle(
+              color: isDarkMode ? Colors.white : Colors.black,
               fontFamily: 'Gilroy',
               fontSize: 16,
             ),
-            cursorColor: Colors.grey,
+            cursorColor: isDarkMode ? kColorTextMutedDark : Colors.grey,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDarkMode ? kColorCardDark : Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -266,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               hintText: 'Password',
               hintStyle: TextStyle(
-                color: Colors.grey.shade500,
+                color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade500,
                 fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w400,
                 fontSize: 16,
@@ -276,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   _passwordVisible
                       ? Icons.visibility
                       : Icons.visibility_off,
-                  color: Colors.grey.shade600,
+                  color: isDarkMode ? kColorTextMutedDark : Colors.grey.shade600,
                 ),
                 onPressed: () {
                   setState(() {
@@ -309,7 +324,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text(
+                  : Text(
                       'Log In',
                       style: TextStyle(
                         fontSize: 18,
@@ -324,12 +339,12 @@ class _LoginScreenState extends State<LoginScreen> {
           Text(
             'or'.tr().toString(),
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               letterSpacing: 2,
               fontSize: 16,
               fontFamily: 'Gilroy',
               fontWeight: FontWeight.w300,
-              color: Color(0xff000000),
+              color: isDarkMode ? kColorTextMutedDark : const Color(0xff000000),
             ),
           ),
           const SizedBox(height: 22),
@@ -337,7 +352,7 @@ class _LoginScreenState extends State<LoginScreen> {
             height: 48,
             width: double.infinity,
             child: Material(
-              color: Colors.white,
+              color: isDarkMode ? kColorCardDark : Colors.white,
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 onTap: () async {
@@ -350,11 +365,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? 'loginapple'.tr().toString()
                         : 'logingoogle'.tr().toString(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontFamily: 'Gilroy',
                       fontWeight: FontWeight.w600,
-                      color: Colors.black,
+                      color: isDarkMode ? Colors.white : Colors.black,
                     ),
                   ),
                 ),
@@ -366,7 +381,7 @@ class _LoginScreenState extends State<LoginScreen> {
             height: 48,
             width: double.infinity,
             child: Material(
-              color: Colors.white,
+              color: isDarkMode ? kColorCardDark : Colors.white,
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 onTap: () async {
@@ -377,11 +392,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Text(
                     'loginservice'.tr().toString(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontFamily: 'Gilroy',
                       fontWeight: FontWeight.w600,
-                      color: Colors.black,
+                      color: isDarkMode ? Colors.white : Colors.black,
                     ),
                   ),
                 ),
@@ -488,11 +503,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final tokens = data?['tokens'];
       if ((response.statusCode == 200 || response.statusCode == 201) && tokens != null && tokens['accessToken'] != null) {
         print('LOGIN SUCCESS: token=${tokens['accessToken']}');
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', tokens['accessToken']);
-        await prefs.setString('refresh_token', tokens['refreshToken'] ?? '');
-        await prefs.setString('email', email);
-        await prefs.setString('subscription_type', data?['subscription'] ?? 'Free');
+        await ApiService.setTokens(tokens['accessToken'], tokens['refreshToken'] ?? '');
+        await SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('email', email);
+          prefs.setString('subscription_type', data?['subscription'] ?? 'Free');
+        });
         print('TOKENS SAVED: access_token, refresh_token, email, subscription_type saved to prefs');
 
         if (mounted) {

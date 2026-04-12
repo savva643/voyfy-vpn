@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VoyFy VPN - Profile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <!-- Toast Container -->
+      <div id="toast-container"></div>
+
+      <!-- Mobile Header -->
+      <header class="mobile-header mobile-only">
+        <a class="brand" href="./index.html">
+          <img src="./logo.png" alt="VoyFy" class="brand-logo">
+          <span class="brand-name">VoyFy</span>
+        </a>
+        <button class="theme-toggle" id="mobile-theme-toggle" aria-label="Toggle theme">
+          <i class="fas fa-sun"></i>
+        </button>
+      </header>
+
+      <!-- Desktop Header -->
+      <header class="topbar desktop-only">
+        <div class="topbar-inner">
+          <a class="brand" href="./index.html">
+            <img src="./logo.png" alt="VoyFy" class="brand-logo">
+            <span class="brand-name">VoyFy</span>
+          </a>
+          <nav class="topnav">
+            <a class="nav-link" href="./index.html">Home</a>
+            <a class="nav-link" href="./subscriptions.html">Subscriptions</a>
+            <a class="nav-link" href="./updates.html">Updates</a>
+            <a class="nav-link profile-link active" href="./profile.html" id="desktop-auth-link">
+              <i class="fas fa-user"></i> Profile
+            </a>
+            <button class="theme-toggle" id="desktop-theme-toggle" aria-label="Toggle theme">
+              <i class="fas fa-sun"></i>
+            </button>
+          </nav>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="section">
+          <h1 class="hero-title" style="font-size: 38px;">Profile</h1>
+          <p class="hero-subtitle">Manage your account and subscription</p>
+
+          <!-- User Info Card -->
+          <div class="card profile-card">
+            <div class="profile-header">
+              <div class="profile-avatar">
+                <i class="fas fa-user-circle"></i>
+              </div>
+              <div class="profile-info">
+                <div class="profile-email" id="profile-email">Loading...</div>
+                <div class="profile-status" id="profile-status">
+                  <span class="badge badge-free">Free</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Subscription Card -->
+          <div class="card subscription-card">
+            <div class="card-title">
+              <i class="fas fa-crown" style="color: #f59e0b; margin-right: 8px;"></i>
+              Subscription
+            </div>
+            <div id="subscription-info">
+              <div class="subscription-details">
+                <div class="sub-row">
+                  <span class="sub-label">Plan</span>
+                  <span class="sub-value" id="sub-plan">Free</span>
+                </div>
+                <div class="sub-row" id="sub-expiry-row" style="display: none;">
+                  <span class="sub-label">Expires</span>
+                  <span class="sub-value" id="sub-expiry">-</span>
+                </div>
+                <div class="sub-row">
+                  <span class="sub-label">Data used</span>
+                  <span class="sub-value" id="sub-data">0 GB / 10 GB</span>
+                </div>
+              </div>
+              <div class="subscription-actions" id="sub-actions" style="display: none;">
+                <button class="btn btn-danger" id="cancel-sub-btn" type="button">
+                  <i class="fas fa-times"></i> Cancel subscription
+                </button>
+              </div>
+              <div class="subscription-upgrade" id="sub-upgrade">
+                <a href="./subscriptions.html" class="btn btn-primary">
+                  <i class="fas fa-arrow-up"></i> Upgrade to Premium
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Actions -->
+          <div class="card actions-card">
+            <div class="card-title">Account</div>
+            <div class="action-buttons">
+              <button class="btn btn-secondary" id="logout-btn" type="button">
+                <i class="fas fa-sign-out-alt"></i> Log out
+              </button>
+              <button class="btn btn-danger-outline" id="delete-account-btn" type="button">
+                <i class="fas fa-trash"></i> Delete account
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Mobile Bottom Navigation -->
+      <nav class="mobile-bottom-nav mobile-only">
+        <a href="./index.html" class="bottom-nav-item">
+          <i class="fas fa-home"></i>
+          <span>Home</span>
+        </a>
+        <a href="./subscriptions.html" class="bottom-nav-item">
+          <i class="fas fa-crown"></i>
+          <span>Premium</span>
+        </a>
+        <a href="./updates.html" class="bottom-nav-item">
+          <i class="fas fa-bell"></i>
+          <span>Updates</span>
+        </a>
+        <a href="./profile.html" class="bottom-nav-item active" id="mobile-auth-link">
+          <i class="fas fa-user"></i>
+          <span id="mobile-auth-text">Profile</span>
+        </a>
+      </nav>
+
+      <footer class="footer desktop-only">
+        <div class="footer-inner">
+          <span>© <span id="year"></span> VoyFy VPN</span>
+          <a href="mailto:support@voyfy.vpn">support@voyfy.vpn</a>
+        </div>
+      </footer>
+    </div>
+
+    <script src="./os-detect.js"></script>
+    <script>
+      (function() {
+        // Update year
+        const yearEl = document.getElementById('year');
+        if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+        // Check auth and load profile
+        const token = localStorage.getItem('voyfy_token');
+        const email = localStorage.getItem('voyfy_email') || localStorage.getItem('voyfy_user_email');
+
+        if (!token) {
+          // Not logged in, redirect to auth
+          window.location.href = './auth.html';
+          return;
+        }
+
+        // Display email
+        const emailEl = document.getElementById('profile-email');
+        if (emailEl && email) {
+          emailEl.textContent = email;
+        } else if (emailEl) {
+          emailEl.textContent = 'User';
+        }
+
+        // Load subscription info from localStorage
+        const subscription = localStorage.getItem('voyfy_subscription') || 'Free';
+        const expiry = localStorage.getItem('voyfy_expiry');
+        const dataUsed = localStorage.getItem('voyfy_data_used') || '0';
+
+        // Update subscription display
+        const planEl = document.getElementById('sub-plan');
+        const statusEl = document.getElementById('profile-status');
+        const expiryRow = document.getElementById('sub-expiry-row');
+        const expiryEl = document.getElementById('sub-expiry');
+        const dataEl = document.getElementById('sub-data');
+        const actionsEl = document.getElementById('sub-actions');
+        const upgradeEl = document.getElementById('sub-upgrade');
+
+        if (planEl) planEl.textContent = subscription;
+
+        if (statusEl) {
+          const isPremium = subscription !== 'Free';
+          statusEl.innerHTML = isPremium
+            ? '<span class="badge badge-premium">Premium</span>'
+            : '<span class="badge badge-free">Free</span>';
+        }
+
+        if (expiry && expiryRow && expiryEl) {
+          expiryRow.style.display = 'flex';
+          expiryEl.textContent = new Date(expiry).toLocaleDateString();
+        }
+
+        if (dataEl) {
+          const limit = subscription === 'Free' ? '10 GB' : 'Unlimited';
+          dataEl.textContent = `${dataUsed} GB / ${limit}`;
+        }
+
+        if (subscription !== 'Free') {
+          if (actionsEl) actionsEl.style.display = 'block';
+          if (upgradeEl) upgradeEl.style.display = 'none';
+        }
+
+        // Logout handler
+        document.getElementById('logout-btn')?.addEventListener('click', () => {
+          localStorage.removeItem('voyfy_token');
+          localStorage.removeItem('voyfy_refresh');
+          localStorage.removeItem('voyfy_email');
+          localStorage.removeItem('voyfy_subscription');
+          showToast('Logged out successfully', 'success');
+          setTimeout(() => {
+            window.location.href = './auth.html';
+          }, 1000);
+        });
+
+        // Cancel subscription handler
+        document.getElementById('cancel-sub-btn')?.addEventListener('click', () => {
+          if (confirm('Are you sure you want to cancel your subscription?')) {
+            localStorage.setItem('voyfy_subscription', 'Free');
+            showToast('Subscription cancelled', 'info');
+            setTimeout(() => location.reload(), 1000);
+          }
+        });
+
+        // Delete account handler
+        document.getElementById('delete-account-btn')?.addEventListener('click', () => {
+          if (confirm('Are you sure? This will permanently delete your account.')) {
+            localStorage.clear();
+            showToast('Account deleted', 'info');
+            setTimeout(() => {
+              window.location.href = './index.html';
+            }, 1000);
+          }
+        });
+
+        // Update auth UI
+        if (typeof checkAuthState === 'function') checkAuthState();
+      })();
+    </script>
+  </body>
+</html>

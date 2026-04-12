@@ -13,9 +13,10 @@ class BottomNavBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -30,9 +31,9 @@ class BottomNavBarWidget extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home_rounded, 'home'.tr(), 0),
-              _buildNavItem(Icons.workspace_premium_rounded, 'premium'.tr(), 1),
-              _buildNavItem(Icons.settings_rounded, 'settings'.tr(), 2),
+              _buildNavItem(Icons.home_rounded, 'home'.tr(), 0, isDark),
+              _buildNavItem(Icons.workspace_premium_rounded, 'premium'.tr(), 1, isDark),
+              _buildNavItem(Icons.settings_rounded, 'settings'.tr(), 2, isDark),
             ],
           ),
         ),
@@ -40,7 +41,7 @@ class BottomNavBarWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index) {
+  Widget _buildNavItem(IconData icon, String label, int index, bool isDark) {
     final isSelected = currentIndex == index;
     return GestureDetector(
       onTap: () => onTap(index),
@@ -53,12 +54,12 @@ class BottomNavBarWidget extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isSelected ? const Color(0xFF0038FF) : Colors.grey, size: 24),
+            Icon(icon, color: isSelected ? const Color(0xFF0038FF) : (isDark ? Colors.grey.shade400 : Colors.grey), size: 24),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? const Color(0xFF0038FF) : Colors.grey,
+                color: isSelected ? const Color(0xFF0038FF) : (isDark ? Colors.grey.shade400 : Colors.grey),
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 fontFamily: 'Gilroy',

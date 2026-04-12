@@ -1,0 +1,89 @@
+# Docker Compose for VoyFy VPN
+# 
+# QUICK START:
+#   docker-compose up -d
+#
+# If you get "container name already in use" error:
+#   docker-compose down -v
+#   docker rm -f $(docker ps -aq --filter name=voyfy)
+#   docker-compose up -d
+#
+# RESET EVERYTHING (WARNING: deletes all data):
+#   docker-compose down -v
+#   docker volume rm voyfy-vpn_postgres_data
+#   docker-compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: voyfy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-voyfy}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-voyfy_secret}
+      POSTGRES_DB: ${DB_NAME:-voyfy_vpn}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - voyfy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-voyfy} -d ${DB_NAME:-voyfy_vpn}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voyfy-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-voyfy_vpn}
+      - DB_USER=${DB_USER:-voyfy}
+      - DB_PASSWORD=${DB_PASSWORD:-voyfy_secret}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - ADMIN_API_KEY=${ADMIN_API_KEY}
+    volumes:
+      - ./backend/logs:/app/logs
+    ports:
+      - "4000:4000"
+    networks:
+      - voyfy-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Nginx - Frontend + API Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: voyfy-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - voyfy-network
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+
+networks:
+  voyfy-network:
+    driver: bridge

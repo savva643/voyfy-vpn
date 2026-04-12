@@ -17,14 +17,22 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: Column(
@@ -89,10 +97,11 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
   }
 
   Widget _buildMobileLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -102,13 +111,14 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
   }
 
   Widget _buildDesktopLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 800),
         child: Container(
           margin: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
@@ -131,6 +141,7 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
   }
 
   Widget _buildContent() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -141,7 +152,7 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
           style: TextStyle(
             fontSize: 14,
             fontFamily: 'Gilroy',
-            color: Colors.grey.shade500,
+            color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
           ),
         ),
         const SizedBox(height: 24),
@@ -193,6 +204,7 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
   }
 
   Widget _buildSection(String title, String content) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(
@@ -200,11 +212,11 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
               fontFamily: 'Gilroy',
-              color: Colors.black87,
+              color: isDark ? Colors.white : Colors.black87,
             ),
           ),
           const SizedBox(height: 8),
@@ -213,7 +225,7 @@ class _TermsOfServiceScreenState extends State<TermsOfServiceScreen> {
             style: TextStyle(
               fontSize: 14,
               fontFamily: 'Gilroy',
-              color: Colors.grey.shade700,
+              color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade700,
               height: 1.5,
             ),
           ),

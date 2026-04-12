@@ -26,6 +26,7 @@ class ConnectionButton extends StatelessWidget {
     final iconSize = isDesktop ? 50.0 : 40.0;
     final fontSize = isDesktop ? 16.0 : 14.0;
     final durationFontSize = isDesktop ? 36.0 : 28.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -37,19 +38,21 @@ class ConnectionButton extends StatelessWidget {
             height: buttonSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.15),
+              color: isDark ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.15),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: isDark ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.3),
                 width: isDesktop ? 3 : 2,
               ),
             ),
             child: Center(
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 width: innerSize,
                 height: innerSize,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black26,
@@ -86,7 +89,7 @@ class ConnectionButton extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: isDark ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.2),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -103,8 +106,8 @@ class ConnectionButton extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 isConnected ? 'connected'.tr() : 'disconnected'.tr(),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                   fontFamily: 'Gilroy',
@@ -118,7 +121,7 @@ class ConnectionButton extends StatelessWidget {
           Text(
             formatDuration(duration),
             style: TextStyle(
-              color: Colors.white,
+              color: isDark ? Colors.white : Colors.white,
               fontSize: durationFontSize,
               fontWeight: FontWeight.w300,
               fontFamily: 'Gilroy',

@@ -9,7 +9,7 @@ const { generateSubscription } = require('./subscriptionController');
 const getServers = async (req, res) => {
   try {
     const includePremium = req.user ? true : false;
-    
+
     let serversResult;
     if (includePremium) {
       serversResult = await query(
@@ -22,21 +22,30 @@ const getServers = async (req, res) => {
         []
       );
     }
-    
+
+    // Format for Flutter app compatibility
+    const servers = serversResult.rows.map((s, index) => ({
+      serverId: index + 1, // Sequential ID for Flutter app
+      id: s.id, // Real UUID
+      name: s.name,
+      country: s.country,
+      countryCode: s.country_code,
+      host: s.host,
+      port: s.port,
+      premium: s.premium,
+      isFree: !s.premium, // Flutter uses isFree
+      load: s.load_percentage,
+      src: `assets/images/${s.country_code.toLowerCase()}.jpeg`, // Flag image path
+      locations: 1, // Number of locations (can be calculated from location data)
+    }));
+
     res.json({
       success: true,
       data: {
-        servers: serversResult.rows.map(s => ({
-          id: s.id,
-          name: s.name,
-          country: s.country,
-          countryCode: s.country_code,
-          host: s.host,
-          port: s.port,
-          premium: s.premium,
-          load: s.load_percentage,
-        }))
-      }
+        servers: servers
+      },
+      // Also support Flutter's expected format
+      servers: servers
     });
   } catch (err) {
     logger.error('Get servers error', err);
@@ -282,6 +291,294 @@ const getXrayConfig = async (req, res) => {
   }
 };
 
+// ==========================================
+// Simple Server Registration (No Activation Key)
+// ==========================================
+
+const { v4: uuidv4 } = require('uuid');
+
+const registerServer = async (req, res) => {
+  try {
+    const {
+      name, country, countryCode, host, port = 443,
+      publicKey, serverNames, shortId,
+      pairingCode,
+      premium = false
+    } = req.body;
+
+    // Validate pairing code if provided
+    let codeData = null;
+    if (pairingCode) {
+      const codeResult = await query(
+        `SELECT * FROM server_pairing_codes
+         WHERE code = $1 AND used = false AND expires_at > NOW()`,
+        [pairingCode]
+      );
+
+      if (codeResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid or expired pairing code'
+        });
+      }
+
+      codeData = codeResult.rows[0];
+    }
+
+    // Use data from pairing code if available
+    const serverName = codeData ? codeData.server_name : name;
+    const serverCountry = codeData ? codeData.country : country;
+    const serverPremium = codeData ? codeData.premium : premium;
+    const serverProvider = codeData ? codeData.provider : null;
+
+    if (!serverName || !serverCountry || !host || !publicKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'name, country, host, publicKey required (or valid pairing code)'
+      });
+    }
+
+    // Check if server with this host already exists
+    const existing = await query('SELECT id FROM vpn_servers WHERE host = $1', [host]);
+    if (existing.rows.length > 0) {
+      // Update existing server
+      const serverId = existing.rows[0].id;
+      await query(
+        `UPDATE vpn_servers SET
+         name = $1, country = $2, country_code = $3, port = $4,
+         public_key = $5, server_names = $6, short_id = $7,
+         premium = $8, provider = $9, is_active = true, last_seen = NOW()
+         WHERE id = $10`,
+        [serverName, serverCountry, countryCode || serverCountry, port, publicKey,
+         JSON.stringify(serverNames || []), shortId, serverPremium, serverProvider, serverId]
+      );
+
+      // Mark pairing code as used
+      if (codeData) {
+        await query(
+          `UPDATE server_pairing_codes SET used = true, used_at = NOW(), used_by_ip = $1 WHERE code = $2`,
+          [host, pairingCode]
+        );
+      }
+
+      logger.info(`Server updated: ${serverName} (${serverId})`);
+
+      return res.json({
+        success: true,
+        serverId,
+        serverName: serverName,
+        apiKey: process.env.ADMIN_API_KEY,
+        message: 'Server updated successfully'
+      });
+    }
+
+    // Create new server
+    const serverId = uuidv4();
+    await query(
+      `INSERT INTO vpn_servers (id, name, country, country_code, host, port,
+       protocol, public_key, server_names, short_id, premium, provider, is_active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, NOW())`,
+      [
+        serverId,
+        serverName,
+        serverCountry,
+        countryCode || serverCountry,
+        host,
+        port,
+        'vless',
+        publicKey,
+        JSON.stringify(serverNames || []),
+        shortId,
+        serverPremium,
+        serverProvider
+      ]
+    );
+
+    // Mark pairing code as used
+    if (codeData) {
+      await query(
+        `UPDATE server_pairing_codes SET used = true, used_at = NOW(), used_by_ip = $1 WHERE code = $2`,
+        [host, pairingCode]
+      );
+    }
+
+    logger.info(`Server registered: ${serverName} (${serverId}) from ${host}`);
+
+    res.json({
+      success: true,
+      serverId,
+      serverName: serverName,
+      apiKey: process.env.ADMIN_API_KEY,
+      message: 'Server registered successfully'
+    });
+  } catch (err) {
+    logger.error('Register server error', err);
+    res.status(500).json({ success: false, message: 'Failed to register server' });
+  }
+};
+
+const getAdminServers = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, name, country, country_code, host, port, premium,
+              is_active, load_percentage, current_users, last_seen,
+              public_key, short_id, provider, created_at
+       FROM vpn_servers ORDER BY created_at DESC`,
+      []
+    );
+
+    res.json({
+      success: true,
+      servers: result.rows.map(s => ({
+        id: s.id,
+        name: s.name,
+        country: s.country,
+        countryCode: s.country_code,
+        host: s.host,
+        port: s.port,
+        premium: s.premium,
+        isActive: s.is_active,
+        load: s.load_percentage,
+        currentUsers: s.current_users,
+        lastSeen: s.last_seen,
+        publicKey: s.public_key,
+        shortId: s.short_id,
+        provider: s.provider,
+        createdAt: s.created_at
+      }))
+    });
+  } catch (err) {
+    logger.error('Get admin servers error', err);
+    res.status(500).json({ success: false, message: 'Failed to get servers' });
+  }
+};
+
+const serverHeartbeat = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { loadPercent, currentUsers } = req.body;
+    
+    await query(
+      `UPDATE vpn_servers SET load_percentage = $1, current_users = $2, last_seen = NOW() WHERE id = $3`,
+      [loadPercent || 0, currentUsers || 0, id]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Heartbeat error', err);
+    res.status(500).json({ success: false, message: 'Failed to update heartbeat' });
+  }
+};
+
+// ==========================================
+// Server Pairing Codes (One-time use)
+// ==========================================
+
+const generatePairingCode = () => {
+  return 'VOYFY-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+};
+
+const createPairingCode = async (req, res) => {
+  try {
+    const { serverName, country, premium = false, provider } = req.body;
+
+    if (!serverName || !country) {
+      return res.status(400).json({
+        success: false,
+        message: 'serverName and country required'
+      });
+    }
+
+    const code = generatePairingCode();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours validity
+
+    await query(
+      `INSERT INTO server_pairing_codes (code, server_name, country, premium, provider, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [code, serverName, country, premium, provider, expiresAt]
+    );
+
+    logger.info(`Pairing code created: ${code} for ${serverName}`);
+
+    res.json({
+      success: true,
+      code,
+      serverName,
+      country,
+      premium,
+      provider,
+      expiresAt,
+      installCommand: `curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "${code}"`
+    });
+  } catch (err) {
+    logger.error('Create pairing code error', err);
+    res.status(500).json({ success: false, message: 'Failed to create code' });
+  }
+};
+
+const getPairingCodes = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT code, server_name, country, premium, used, 
+              expires_at, created_at, used_at, used_by_ip
+       FROM server_pairing_codes ORDER BY created_at DESC`,
+      []
+    );
+    
+    res.json({
+      success: true,
+      codes: result.rows.map(c => ({
+        code: c.code,
+        serverName: c.server_name,
+        country: c.country,
+        premium: c.premium,
+        used: c.used,
+        expiresAt: c.expires_at,
+        createdAt: c.created_at,
+        usedAt: c.used_at,
+        usedByIp: c.used_by_ip
+      }))
+    });
+  } catch (err) {
+    logger.error('Get pairing codes error', err);
+    res.status(500).json({ success: false, message: 'Failed to get codes' });
+  }
+};
+
+const verifyPairingCode = async (req, res) => {
+  try {
+    const { code } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'code required' });
+    }
+    
+    const result = await query(
+      `SELECT * FROM server_pairing_codes 
+       WHERE code = $1 AND used = false AND expires_at > NOW()`,
+      [code]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired code' });
+    }
+    
+    const codeData = result.rows[0];
+    
+    res.json({
+      success: true,
+      valid: true,
+      serverName: codeData.server_name,
+      country: codeData.country,
+      premium: codeData.premium
+    });
+  } catch (err) {
+    logger.error('Verify pairing code error', err);
+    res.status(500).json({ success: false, message: 'Failed to verify code' });
+  }
+};
+
 module.exports = {
   getServers,
   getServerById,
@@ -289,4 +586,10 @@ module.exports = {
   updateServer,
   deleteServer,
   getXrayConfig,
+  registerServer,
+  getAdminServers,
+  serverHeartbeat,
+  createPairingCode,
+  getPairingCodes,
+  verifyPairingCode,
 };

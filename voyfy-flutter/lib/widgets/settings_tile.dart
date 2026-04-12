@@ -18,6 +18,7 @@ class SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       leading: Icon(icon, color: const Color(0xFF0038FF), size: 24),
       title: Text(
@@ -34,7 +35,7 @@ class SettingsTile extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'Gilroy',
-                color: Colors.grey.shade500,
+                color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
               ),
             )
           : null,

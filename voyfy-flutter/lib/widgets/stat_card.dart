@@ -22,14 +22,17 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
         padding: isDesktop ? const EdgeInsets.all(12) : const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
           borderRadius: BorderRadius.circular(16),
-          border: isDesktop ? Border.all(color: Colors.grey.shade100) : null,
+          border: isDesktop ? Border.all(color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade100) : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -85,7 +88,7 @@ class StatCard extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 fontSize: isDesktop ? 12 : 11,
-                color: Colors.grey.shade500,
+                color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
                 fontWeight: FontWeight.w500,
               ),
             ),

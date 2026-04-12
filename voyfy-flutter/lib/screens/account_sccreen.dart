@@ -87,15 +87,23 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   Widget build(BuildContext context) {
     final isDesktopView = isDesktop;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: isDesktopView ? _buildDesktopLayout() : _buildMobileLayout(),
@@ -105,15 +113,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildMobileLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         _buildHeader(),
         const SizedBox(height: 24),
         Expanded(
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
             ),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -137,6 +146,7 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildDesktopLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         // AppBar on top with gradient background
@@ -149,7 +159,7 @@ class _AccountScreenState extends State<AccountScreen> {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
@@ -358,12 +368,13 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Widget _buildSubscriptionCard() {
     final isPremium = subscriptionType.toLowerCase() != 'free';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -472,9 +483,10 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildSettingsList() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -516,6 +528,7 @@ class _AccountScreenState extends State<AccountScreen> {
     bool showArrow = true,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -539,7 +552,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'Gilroy',
-                  color: titleColor ?? Colors.black87,
+                  color: titleColor ?? (isDark ? Colors.white : Colors.black87),
                 ),
               ),
             ),

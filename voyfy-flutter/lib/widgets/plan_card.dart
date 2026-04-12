@@ -18,14 +18,17 @@ class PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: isPopular
             ? Border.all(color: const Color(0xFF0038FF), width: 2)
-            : null,
+            : Border.all(color: isDark ? const Color(0xFF2C2C2C) : Colors.transparent),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -77,11 +80,11 @@ class PlanCard extends StatelessWidget {
                 children: [
                   Text(
                     price,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'Gilroy',
-                      color: Colors.black,
+                      color: isDark ? Colors.white : Colors.black,
                     ),
                   ),
                   Text(
@@ -89,7 +92,7 @@ class PlanCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontFamily: 'Gilroy',
-                      color: Colors.grey.shade600,
+                      color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade600,
                     ),
                   ),
                 ],
@@ -106,10 +109,10 @@ class PlanCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     feature,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontFamily: 'Gilroy',
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                 ),

@@ -91,14 +91,22 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
   }
 
   Widget _buildMobileLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: Column(
@@ -106,10 +114,11 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
               _buildMobileHeader(),
               const SizedBox(height: 24),
               Expanded(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                   ),
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
@@ -142,14 +151,22 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
   }
 
   Widget _buildDesktopLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: Column(
@@ -163,9 +180,10 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 700),
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                           borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
@@ -190,7 +208,7 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
                                     fontSize: 20,
                                     fontWeight: FontWeight.w700,
                                     fontFamily: 'Gilroy',
-                                    color: Colors.grey.shade800,
+                                    color: isDark ? Colors.white : Colors.grey.shade800,
                                   ),
                                 ),
                                 const SizedBox(height: 20),

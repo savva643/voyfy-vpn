@@ -11,6 +11,8 @@ class SettingsContent extends StatelessWidget {
   final VoidCallback onLanguageTap;
   final VoidCallback onProfileTap;
   final VoidCallback onSubscriptionTap;
+  final VoidCallback onPrivacyPolicyTap;
+  final VoidCallback onTermsOfServiceTap;
   final VoidCallback onLogoutTap;
 
   const SettingsContent({
@@ -20,6 +22,8 @@ class SettingsContent extends StatelessWidget {
     required this.onLanguageTap,
     required this.onProfileTap,
     required this.onSubscriptionTap,
+    required this.onPrivacyPolicyTap,
+    required this.onTermsOfServiceTap,
     required this.onLogoutTap,
   }) : super(key: key);
 
@@ -56,9 +60,9 @@ class SettingsContent extends StatelessWidget {
                   const SizedBox(height: 32),
                   _buildPreferencesSection(context),
                   const SizedBox(height: 16),
-                  _buildAccountSection(),
+                  _buildAccountSection(context),
                   const SizedBox(height: 16),
-                  _buildAboutSection(),
+                  _buildAboutSection(context),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -109,13 +113,13 @@ class SettingsContent extends StatelessWidget {
                             children: [
                               _buildPreferencesSection(context),
                               const SizedBox(height: 20),
-                              _buildAccountSection(),
+                              _buildAccountSection(context),
                             ],
                           ),
                         ),
                         const SizedBox(width: 24),
                         Expanded(
-                          child: _buildAboutSection(),
+                          child: _buildAboutSection(context),
                         ),
                       ],
                     ),
@@ -131,6 +135,7 @@ class SettingsContent extends StatelessWidget {
 
   Widget _buildPreferencesSection(BuildContext context) {
     return _buildSettingsSection(
+      context: context,
       title: 'preferences'.tr(),
       items: [
         SettingsTile(
@@ -168,8 +173,9 @@ class SettingsContent extends StatelessWidget {
     );
   }
 
-  Widget _buildAccountSection() {
+  Widget _buildAccountSection(BuildContext context) {
     return _buildSettingsSection(
+      context: context,
       title: 'account'.tr(),
       items: [
         SettingsTile(
@@ -191,8 +197,9 @@ class SettingsContent extends StatelessWidget {
     );
   }
 
-  Widget _buildAboutSection() {
+  Widget _buildAboutSection(BuildContext context) {
     return _buildSettingsSection(
+      context: context,
       title: 'about'.tr(),
       items: [
         SettingsTile(
@@ -203,21 +210,24 @@ class SettingsContent extends StatelessWidget {
         SettingsTile(
           icon: Icons.privacy_tip_outlined,
           title: 'privacy_policy'.tr(),
-          onTap: () {},
+          onTap: onPrivacyPolicyTap,
         ),
         SettingsTile(
           icon: Icons.description_outlined,
           title: 'terms_of_service'.tr(),
-          onTap: () {},
+          onTap: onTermsOfServiceTap,
         ),
       ],
     );
   }
 
-  Widget _buildSettingsSection({required String title, required List<Widget> items}) {
-    return Container(
+  Widget _buildSettingsSection({required BuildContext context, required String title, required List<Widget> items}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -238,7 +248,7 @@ class SettingsContent extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'Gilroy',
-                color: Colors.grey.shade500,
+                color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
                 letterSpacing: 0.5,
               ),
             ),

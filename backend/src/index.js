@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const config = require('./config');
@@ -12,12 +13,21 @@ const authController = require('./controllers/authController');
 const subscriptionController = require('./controllers/subscriptionController');
 const serverController = require('./controllers/serverController');
 const userController = require('./controllers/userController');
+const subscriptionRoutes = require('./routes/subscriptions');
 
 const app = express();
 
 // Middleware
 app.use(cors(config.cors));
 app.use(express.json());
+
+// Static files - Admin panel
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Admin panel route
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // Request logging
 app.use((req, res, next) => {
@@ -48,6 +58,7 @@ app.post('/api/auth/login', authController.login);
 app.post('/api/auth/refresh', authController.refreshToken);
 app.post('/api/auth/logout', authController.logout);
 app.get('/api/auth/validate', authenticate, authController.validateSession);
+app.get('/api/auth/validate-session', authenticate, authController.validateSession); // Alias for frontend
 
 // FUTURE: External OAuth/SSO
 app.post('/api/auth/oauth/login', authController.externalLogin);
@@ -58,6 +69,9 @@ app.post('/api/auth/oauth/login', authController.externalLogin);
 app.get('/api/subscription', authenticate, subscriptionController.getSubscription);
 app.get('/api/subscription/json', authenticate, subscriptionController.getSubscriptionJson);
 app.get('/api/subscription/:uuid', subscriptionController.getSubscriptionByUuid);
+
+// Subscription Plans Routes
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // ==========================================
 // Server Routes (Public)
@@ -71,14 +85,25 @@ app.get('/api/servers/:id', serverController.getServerById);
 app.get('/api/user/profile', authenticate, userController.getProfile);
 
 // ==========================================
+// VPN Server Management (Admin & Server)
+// ==========================================
+// Server self-registration (uses pairing code)
+app.post('/api/servers/register', serverController.registerServer);
+app.post('/api/servers/:id/heartbeat', serverController.serverHeartbeat);
+app.post('/api/servers/verify-code', serverController.verifyPairingCode);
+
+// Admin server listing with full details
+app.get('/api/admin/servers', authenticate, requireAdmin, serverController.getAdminServers);
+app.delete('/api/admin/servers/:id', authenticate, requireAdmin, serverController.deleteServer);
+
+// Pairing codes (Admin only)
+app.get('/api/admin/pairing-codes', authenticate, requireAdmin, serverController.getPairingCodes);
+app.post('/api/admin/pairing-codes', authenticate, requireAdmin, serverController.createPairingCode);
+app.get('/api/admin/xray-config', authenticate, requireAdmin, serverController.getXrayConfig);
+
+// ==========================================
 // Admin Routes (Admin Only)
 // ==========================================
-
-// Server Management
-app.post('/api/admin/servers', authenticate, requireAdmin, serverController.addServer);
-app.put('/api/admin/servers/:id', authenticate, requireAdmin, serverController.updateServer);
-app.delete('/api/admin/servers/:id', authenticate, requireAdmin, serverController.deleteServer);
-app.get('/api/admin/xray-config', authenticate, requireAdmin, serverController.getXrayConfig);
 
 // User Management
 app.get('/api/admin/users', authenticate, requireAdmin, userController.getAllUsers);
@@ -88,6 +113,14 @@ app.delete('/api/admin/users/:id', authenticate, requireAdmin, userController.de
 
 // Usage Update (for Xray stats collection)
 app.post('/api/subscription/usage', authenticate, requireAdmin, subscriptionController.updateUsage);
+
+// ==========================================
+// Admin Panel Static Files
+// ==========================================
+app.use('/admin', express.static(path.join(__dirname, 'public')));
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // ==========================================
 // Error Handling

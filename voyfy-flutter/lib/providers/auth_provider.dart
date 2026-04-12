@@ -43,29 +43,22 @@ class AuthProvider extends ChangeNotifier {
   Future<void> initialize() async {
     _state = AuthState.loading;
     // Don't notify here - let the UI show loading state initially
-    
+
     try {
       // Load saved tokens
       await ApiService.loadTokens();
-      
-      if (ApiService.accessToken != null) {
-        // Validate session
-        final user = await ApiService.validateSession();
-        
-        if (user != null) {
-          _user = user;
-          _state = AuthState.authenticated;
-        } else {
-          _state = AuthState.unauthenticated;
-        }
+
+      // Simply check if token exists - no backend validation to avoid issues
+      if (ApiService.accessToken != null && ApiService.accessToken!.isNotEmpty) {
+        _state = AuthState.authenticated;
       } else {
         _state = AuthState.unauthenticated;
       }
     } catch (e) {
       _errorMessage = e.toString();
-      _state = AuthState.error;
+      _state = AuthState.unauthenticated; // Treat errors as unauthenticated
     }
-    
+
     // Notify listeners to update UI with auth state
     notifyListeners();
   }

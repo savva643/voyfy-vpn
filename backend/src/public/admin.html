@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoyFy Admin Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        h1 { font-size: 28px; margin-bottom: 10px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #667eea; }
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th { font-weight: 600; color: #666; font-size: 12px; text-transform: uppercase; }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-free { background: #e3f2fd; color: #1976d2; }
+        .badge-premium { background: #fff3e0; color: #f57c00; }
+        .badge-active { background: #e8f5e9; color: #388e3c; }
+        .badge-inactive { background: #ffebee; color: #d32f2f; }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.8; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .load-bar {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .load-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50 0%, #ff9800 50%, #f44336 100%);
+            transition: width 0.3s;
+        }
+        .refresh-btn {
+            float: right;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .login-form {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .login-form input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .login-form button {
+            width: 100%;
+            padding: 14px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .hidden { display: none !important; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        pre {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .modal-close {
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-close:hover { color: #333; }
+        .code-display {
+            background: #1e1e1e;
+            color: #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            letter-spacing: 4px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+        .instruction-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="loginSection" class="login-form">
+        <h2 style="text-align: center; margin-bottom: 30px;">VoyFy Admin</h2>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="adminEmail" placeholder="admin@voyfy.com" value="admin@voyfy.com">
+        </div>
+        <div class="form-group">
+            <label>Пароль</label>
+            <input type="password" id="adminPassword" placeholder="admin123" value="admin123">
+        </div>
+        <button onclick="login()" style="width: 100%; margin-top: 10px;">Войти</button>
+        <p style="text-align: center; margin-top: 15px; color: #666; font-size: 14px;">
+            Тестовые данные: <code>admin@voyfy.com</code> / <code>admin123</code>
+        </p>
+        <p id="loginError" style="color: red; margin-top: 10px; text-align: center;"></p>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboard" class="container hidden">
+        <header>
+            <h1>VoyFy VPN Admin Panel</h1>
+            <p>Управление серверами и пользователями</p>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Всего серверов</h3>
+                <div class="value" id="totalServers">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Активные</h3>
+                <div class="value" id="activeServers">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Пользователей</h3>
+                <div class="value" id="totalUsers">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Общий трафик</h3>
+                <div class="value" id="totalTraffic">-</div>
+            </div>
+        </div>
+
+        <!-- Server Management Section -->
+        <div class="section">
+            <h2>
+                🖥️ Управление VPN серверами
+                <button class="refresh-btn" onclick="loadServers()">Обновить</button>
+            </h2>
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-success" onclick="openCreateServerModal()">➕ Создать новый сервер</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Имя</th>
+                        <th>Локация</th>
+                        <th>Провайдер</th>
+                        <th>IP:Port</th>
+                        <th>Тип</th>
+                        <th>Нагрузка</th>
+                        <th>Пользователи</th>
+                        <th>Статус</th>
+                        <th>Последний контакт</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="serversTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Create Server Modal -->
+    <div id="createServerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🖥️ Создание нового VPN сервера</h2>
+                <span class="modal-close" onclick="closeCreateServerModal()">&times;</span>
+            </div>
+            
+            <!-- Step 1: Form -->
+            <div id="modalStep1">
+                <div class="form-group">
+                    <label>Локация</label>
+                    <select id="newServerLocation" onchange="generateServerName()">
+                        <option value="">Выберите локацию...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Имя сервера (автогенерируется)</label>
+                    <input type="text" id="newServerName" placeholder="Germany-Frankfurt-1" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Тип сервера</label>
+                    <select id="newServerPremium">
+                        <option value="false">Free</option>
+                        <option value="true">Premium</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Провайдер (опционально)</label>
+                    <input type="text" id="newServerProvider" placeholder="DigitalOcean, Hetzner, etc.">
+                </div>
+                <button class="btn btn-success" onclick="createServerCode()">Сгенерировать код привязки</button>
+            </div>
+            
+            <!-- Step 2: Code Display -->
+            <div id="modalStep2" class="hidden">
+                <div class="instruction-box">
+                    <strong>✅ Сервер создан!</strong><br>
+                    Используйте этот код для привязки VPN сервера. Код действует 24 часа и может быть использован только один раз.
+                </div>
+                
+                <div class="code-display" id="pairingCodeDisplay">VOYFY-XXXXXX</div>
+                
+                <div class="instruction-box">
+                    <strong>📋 Инструкция по установке:</strong>
+                    <ol style="margin-left: 20px; margin-top: 10px;">
+                        <li>Подготовьте чистый VPS сервер (Ubuntu 20.04+)</li>
+                        <li>Откройте терминал на сервере</li>
+                        <li>Выполните команду:</li>
+                    </ol>
+                    <pre style="margin-top: 10px;">curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "<span id="codeInCommand">CODE</span>"</pre>
+                </div>
+                
+                <button class="btn btn-primary" onclick="copyInstallCommand()">📋 Копировать команду</button>
+                <button class="btn" onclick="closeCreateServerModal()" style="margin-left: 10px;">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let adminToken = localStorage.getItem('voyfy_admin_token');
+        const API_BASE = '/api';
+
+        function openCreateServerModal() {
+            document.getElementById('createServerModal').classList.add('active');
+            document.getElementById('modalStep1').classList.remove('hidden');
+            document.getElementById('modalStep2').classList.add('hidden');
+            document.getElementById('newServerName').value = '';
+            document.getElementById('newServerLocation').value = '';
+            document.getElementById('newServerProvider').value = '';
+            loadLocations();
+        }
+
+        async function loadLocations() {
+            try {
+                const response = await fetch(`${API_BASE}/subscriptions/locations`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const select = document.getElementById('newServerLocation');
+                    select.innerHTML = '<option value="">Выберите локацию...</option>';
+
+                    // Group by country
+                    const grouped = {};
+                    data.locations.forEach(loc => {
+                        if (!grouped[loc.country]) {
+                            grouped[loc.country] = [];
+                        }
+                        grouped[loc.country].push(loc);
+                    });
+
+                    Object.keys(grouped).forEach(country => {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = `${grouped[country][0].flag_emoji} ${country}`;
+
+                        grouped[country].forEach(loc => {
+                            const option = document.createElement('option');
+                            option.value = loc.id;
+                            option.textContent = loc.city ? `${loc.city}, ${loc.country}` : loc.country;
+                            option.dataset.countryCode = loc.country_code;
+                            option.dataset.country = loc.country;
+                            option.dataset.city = loc.city;
+                            optgroup.appendChild(option);
+                        });
+
+                        select.appendChild(optgroup);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading locations:', error);
+            }
+        }
+
+        async function generateServerName() {
+            const locationId = document.getElementById('newServerLocation').value;
+            if (!locationId) {
+                document.getElementById('newServerName').value = '';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/subscriptions/generate-server-name`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`
+                    },
+                    body: JSON.stringify({ locationId })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('newServerName').value = data.serverName;
+                }
+            } catch (error) {
+                console.error('Error generating server name:', error);
+            }
+        }
+
+        function closeCreateServerModal() {
+            document.getElementById('createServerModal').classList.remove('active');
+        }
+
+        async function createServerCode() {
+            const locationSelect = document.getElementById('newServerLocation');
+            const locationId = locationSelect.value;
+            const serverName = document.getElementById('newServerName').value;
+            const premium = document.getElementById('newServerPremium').value === 'true';
+            const provider = document.getElementById('newServerProvider').value;
+
+            const selectedOption = locationSelect.options[locationSelect.selectedIndex];
+            const countryCode = selectedOption ? selectedOption.dataset.countryCode : '';
+
+            if (!locationId || !serverName || !countryCode) {
+                alert('Выберите локацию');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/pairing-codes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`
+                    },
+                    body: JSON.stringify({
+                        serverName,
+                        country: countryCode,
+                        premium,
+                        provider
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('pairingCodeDisplay').textContent = data.code;
+                    document.getElementById('codeInCommand').textContent = data.code;
+                    document.getElementById('modalStep1').classList.add('hidden');
+                    document.getElementById('modalStep2').classList.remove('hidden');
+                } else {
+                    alert('Ошибка создания кода');
+                }
+            } catch (error) {
+                alert('Ошибка создания кода');
+            }
+        }
+
+        function copyInstallCommand() {
+            const code = document.getElementById('pairingCodeDisplay').textContent;
+            const command = `curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "${code}"`;
+            navigator.clipboard.writeText(command).then(() => alert('Команда скопирована!'));
+        }
+
+        async function login() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            
+            if (!email || !password) {
+                document.getElementById('loginError').textContent = 'Введите email и пароль';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok || !data.success) {
+                    document.getElementById('loginError').textContent = data.message || 'Ошибка входа';
+                    return;
+                }
+                
+                // Save token
+                adminToken = data.data.tokens.accessToken;
+                localStorage.setItem('voyfy_admin_token', adminToken);
+                localStorage.setItem('voyfy_admin_email', email);
+                
+                // Load dashboard
+                loadServers();
+            } catch (error) {
+                document.getElementById('loginError').textContent = 'Ошибка подключения к серверу';
+                console.error('Login error:', error);
+            }
+        }
+
+        async function loadServers() {
+            try {
+                const [serversResponse, usersResponse] = await Promise.all([
+                    fetch(`${API_BASE}/admin/servers`, {
+                        headers: { 'Authorization': `Bearer ${adminToken}` }
+                    }),
+                    fetch(`${API_BASE}/admin/users`, {
+                        headers: { 'Authorization': `Bearer ${adminToken}` }
+                    })
+                ]);
+
+                if (serversResponse.status === 401) { logout(); return; }
+
+                const serversData = await serversResponse.json();
+                const usersData = await usersResponse.json();
+
+                renderServers(serversData.servers || []);
+                updateStats(serversData.servers || [], usersData.users || []);
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading servers:', error);
+            }
+        }
+
+        function renderServers(servers) {
+            const tbody = document.getElementById('serversTable');
+            tbody.innerHTML = servers.map(s => {
+                const lastSeen = s.lastSeen ? new Date(s.lastSeen).toLocaleString() : 'Никогда';
+                const isOnline = s.lastSeen && (Date.now() - new Date(s.lastSeen) < 300000);
+                return `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td>${s.country}</td>
+                        <td>${s.provider || '-'}</td>
+                        <td>${s.host}:${s.port}</td>
+                        <td><span class="badge ${s.premium ? 'badge-premium' : 'badge-free'}">${s.premium ? 'PREMIUM' : 'FREE'}</span></td>
+                        <td>
+                            <div class="load-bar"><div class="load-bar-fill" style="width: ${s.load || 0}%"></div></div>
+                            ${s.load || 0}%
+                        </td>
+                        <td>${s.currentUsers || 0}</td>
+                        <td><span class="badge ${isOnline ? 'badge-active' : 'badge-inactive'}">${isOnline ? 'ONLINE' : 'OFFLINE'}</span></td>
+                        <td>${lastSeen}</td>
+                        <td><button class="btn btn-danger" onclick="deleteServer('${s.id}')">Удалить</button></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateStats(servers, users) {
+            document.getElementById('totalServers').textContent = servers.length;
+            document.getElementById('activeServers').textContent =
+                servers.filter(s => s.isActive).length;
+            document.getElementById('totalUsers').textContent = users.length;
+            document.getElementById('totalTraffic').textContent =
+                servers.reduce((sum, s) => sum + (s.currentUsers || 0), 0);
+        }
+
+        async function deleteServer(id) {
+            if (!confirm('Удалить сервер?')) return;
+            try {
+                const response = await fetch(`${API_BASE}/admin/servers/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                if (response.ok) loadServers();
+            } catch (error) {
+                alert('Ошибка удаления');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('voyfy_admin_token');
+            location.reload();
+        }
+
+        if (adminToken) loadServers();
+        setInterval(() => {
+            if (!document.getElementById('dashboard').classList.contains('hidden')) {
+                loadServers();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

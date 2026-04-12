@@ -91,15 +91,23 @@ class _ServerLocationState extends State<ServerLocation> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isWideView = size.width > 600;
-    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [kGradientStart, kGradientEnd],
-          ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [kGradientStart, kGradientEnd],
+                ),
         ),
         child: SafeArea(
           child: isWideView 
@@ -111,6 +119,7 @@ class _ServerLocationState extends State<ServerLocation> {
   }
 
   Widget _buildMobileLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         _buildMobileHeader(),
@@ -118,10 +127,11 @@ class _ServerLocationState extends State<ServerLocation> {
         _buildTabletSearchBar(),
         const SizedBox(height: 16),
         Expanded(
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
             ),
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
@@ -149,7 +159,7 @@ class _ServerLocationState extends State<ServerLocation> {
 
   Widget _buildMobileHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
           Material(
@@ -159,8 +169,8 @@ class _ServerLocationState extends State<ServerLocation> {
               onTap: () => Navigator.pop(context),
               borderRadius: BorderRadius.circular(30),
               child: Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   shape: BoxShape.circle,
@@ -169,22 +179,26 @@ class _ServerLocationState extends State<ServerLocation> {
                   child: Icon(
                     Icons.arrow_back_ios_new,
                     color: Colors.white,
-                    size: 20,
+                    size: 18,
                   ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 16),
-          Text(
-            'server_location'.tr(),
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              fontFamily: 'Gilroy',
+          Expanded(
+            child: Text(
+              'server_location'.tr(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontFamily: 'Gilroy',
+              ),
             ),
           ),
+          const SizedBox(width: 56),
         ],
       ),
     );
@@ -247,9 +261,11 @@ class _ServerLocationState extends State<ServerLocation> {
     required Color badgeColor,
     required VoidCallback onTap,
   }) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -281,10 +297,11 @@ class _ServerLocationState extends State<ServerLocation> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                       fontFamily: 'Gilroy',
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                 ),
@@ -315,6 +332,7 @@ class _ServerLocationState extends State<ServerLocation> {
   }
 
   Widget _buildMobileRecommendedSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -324,7 +342,7 @@ class _ServerLocationState extends State<ServerLocation> {
             fontSize: 17,
             fontWeight: FontWeight.w700,
             fontFamily: 'Gilroy',
-            color: Colors.grey.shade800,
+            color: isDark ? Colors.white : Colors.grey.shade800,
           ),
         ),
         const SizedBox(height: 12),
@@ -335,7 +353,7 @@ class _ServerLocationState extends State<ServerLocation> {
           title: 'fastest_server'.tr(),
           badgeText: 'premium'.tr(),
           badgeColor: Colors.blueAccent,
-          onTap: () => Navigator.pop(context),
+          onTap: () => _selectFastestServer(),
         ),
         const SizedBox(height: 10),
         _buildRecommendedCard(
@@ -345,13 +363,43 @@ class _ServerLocationState extends State<ServerLocation> {
           title: 'free_server'.tr(),
           badgeText: 'free'.tr(),
           badgeColor: Colors.orange,
-          onTap: () => Navigator.pop(context),
+          onTap: () => _selectFreeServer(),
         ),
       ],
     );
   }
 
+  Future<void> _selectFastestServer() async {
+    // Select server with lowest load (simulating fastest)
+    if (_serverData.isEmpty) return;
+
+    final premiumServers = _serverData.where((s) => !s['isFree']).toList();
+    if (premiumServers.isEmpty) {
+      final server = _serverData.reduce((a, b) => a['load'] < b['load'] ? a : b);
+      await _selectServer(server);
+    } else {
+      final server = premiumServers.reduce((a, b) => a['load'] < b['load'] ? a : b);
+      await _selectServer(server);
+    }
+  }
+
+  Future<void> _selectFreeServer() async {
+    // Select random free server
+    final freeServers = _serverData.where((s) => s['isFree']).toList();
+    if (freeServers.isEmpty) return;
+
+    final random = DateTime.now().millisecond % freeServers.length;
+    await _selectServer(freeServers[random]);
+  }
+
+  Future<void> _selectServer(dynamic server) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('idserv', server['serverId']);
+    Navigator.pop(context, server['serverId']);
+  }
+
   Widget _buildMobileAllServersHeader() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -361,14 +409,14 @@ class _ServerLocationState extends State<ServerLocation> {
             fontSize: 17,
             fontWeight: FontWeight.w700,
             fontFamily: 'Gilroy',
-            color: Colors.grey.shade800,
+            color: isDark ? Colors.white : Colors.grey.shade800,
           ),
         ),
         Text(
           '${_searchedServerData.length} available',
           style: TextStyle(
             fontSize: 13,
-            color: Colors.grey.shade500,
+            color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
             fontFamily: 'Gilroy',
           ),
         ),
@@ -377,17 +425,19 @@ class _ServerLocationState extends State<ServerLocation> {
   }
 
   Widget _buildMobileServerList() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: _searchedServerData.map((server) {
         final isSelected = _selectedServerId == server['serverId'];
-        return Container(
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(14),
             border: isSelected 
               ? Border.all(color: const Color(0xFF0038FF), width: 2)
-              : null,
+              : Border.all(color: isDark ? const Color(0xFF3C3C3C) : Colors.transparent),
           ),
           child: Material(
             color: Colors.transparent,
@@ -408,10 +458,15 @@ class _ServerLocationState extends State<ServerLocation> {
                       height: 40,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          server['src'],
-                          fit: BoxFit.cover,
-                        ),
+                        child: server['countryCode'] != null
+                            ? Image.network(
+                                'https://flagcdn.com/w80/${server['countryCode'].toLowerCase()}.png',
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Image.asset('assets/images/placeholder.png', fit: BoxFit.cover);
+                                },
+                              )
+                            : Image.asset(server['src'], fit: BoxFit.cover),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -425,10 +480,11 @@ class _ServerLocationState extends State<ServerLocation> {
                                 child: Text(
                                   (server['name'].toString()).tr().toString(),
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 15,
                                     fontFamily: 'Gilroy',
+                                    color: isDark ? Colors.white : Colors.black87,
                                   ),
                                 ),
                               ),
@@ -457,7 +513,7 @@ class _ServerLocationState extends State<ServerLocation> {
                             '${server['locations']} locations',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Colors.grey.shade500,
+                              color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade500,
                               fontFamily: 'Gilroy',
                             ),
                           ),
@@ -487,6 +543,7 @@ class _ServerLocationState extends State<ServerLocation> {
 
   // ==================== TABLET LAYOUT ====================
   Widget _buildTabletLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         // Left Panel - Header and Search
@@ -552,6 +609,7 @@ class _ServerLocationState extends State<ServerLocation> {
                   title: 'fastest_server'.tr(),
                   subtitle: 'premium'.tr(),
                   subtitleColor: Colors.orange,
+                  onTap: _selectFastestServer,
                 ),
                 const SizedBox(height: 12),
                 _buildTabletRecommendedCard(
@@ -560,6 +618,7 @@ class _ServerLocationState extends State<ServerLocation> {
                   title: 'free_server'.tr(),
                   subtitle: 'free'.tr(),
                   subtitleColor: const Color(0xff28C0C1),
+                  onTap: _selectFreeServer,
                 ),
               ],
             ),
@@ -567,10 +626,11 @@ class _ServerLocationState extends State<ServerLocation> {
         ),
         // Right Panel - Server List
         Expanded(
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
             margin: const EdgeInsets.only(right: 24, top: 24, bottom: 24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               borderRadius: BorderRadius.circular(24),
             ),
             child: ClipRRect(
@@ -582,10 +642,11 @@ class _ServerLocationState extends State<ServerLocation> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'All Servers (${_searchedServerData.length})',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         fontFamily: 'Gilroy',
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
                   ),
@@ -611,65 +672,71 @@ class _ServerLocationState extends State<ServerLocation> {
     required String title,
     required String subtitle,
     required Color subtitleColor,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Gilroy',
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Gilroy',
+                    ),
                   ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: subtitleColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: subtitleColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.5), size: 16),
-        ],
+            Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.5), size: 16),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTabletServerCard(dynamic server) {
     final isSelected = _selectedServerId == server['serverId'];
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: isSelected 
+        border: isSelected
           ? Border.all(color: const Color(0xFF0038FF), width: 2)
-          : null,
+          : Border.all(color: isDark ? const Color(0xFF3C3C3C) : Colors.transparent),
       ),
       child: Material(
         color: Colors.transparent,
@@ -690,10 +757,15 @@ class _ServerLocationState extends State<ServerLocation> {
                   height: 40,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      server['src'],
-                      fit: BoxFit.cover,
-                    ),
+                    child: server['countryCode'] != null
+                        ? Image.network(
+                            'https://flagcdn.com/w80/${server['countryCode'].toLowerCase()}.png',
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Image.asset('assets/images/placeholder.png', fit: BoxFit.cover);
+                            },
+                          )
+                        : Image.asset(server['src'], fit: BoxFit.cover),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -704,11 +776,12 @@ class _ServerLocationState extends State<ServerLocation> {
                       Row(
                         children: [
                           Text(
-                            (server['name'].toString()).tr().toString(),
-                            style: const TextStyle(
+                            server['name'].toString(),
+                            style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                               fontFamily: 'Gilroy',
+                              color: isDark ? Colors.white : Colors.black87,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -731,10 +804,10 @@ class _ServerLocationState extends State<ServerLocation> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${server['locations']} locations',
+                        server['country'] ?? 'Unknown',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey.shade600,
+                          color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade600,
                           fontFamily: 'Gilroy',
                         ),
                       ),

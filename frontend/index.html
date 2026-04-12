@@ -2,215 +2,199 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Voyfy VPN – Download</title>
+    <title>VoyFy VPN - Download</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="page">
-      <header class="header">
-        <div class="logo">Voyfy VPN</div>
-        <nav class="nav">
-          <a href="#download">Download</a>
-          <a href="#features">Features</a>
-          <a href="#help">Help</a>
-        </nav>
+      <!-- Toast Container -->
+      <div id="toast-container"></div>
+
+      <!-- Mobile Header -->
+      <header class="mobile-header mobile-only">
+        <a class="brand" href="./index.html">
+          <img src="./logo.png" alt="VoyFy" class="brand-logo">
+          <span class="brand-name">VoyFy</span>
+        </a>
+        <button class="theme-toggle" id="mobile-theme-toggle" aria-label="Toggle theme">
+          <i class="fas fa-sun"></i>
+        </button>
       </header>
 
-      <main class="main">
-        <section class="hero">
-          <div class="hero-text">
-            <h1>Fast & secure VPN for all your devices</h1>
-            <p>Download Voyfy VPN for your platform. We detected your OS and selected the best option for you.</p>
-            <div id="primary-download" class="primary-download"></div>
-            <button class="secondary-button" id="all-platforms-btn">All platforms</button>
-          </div>
-          <div class="hero-card">
-            <div class="hero-card-header">
-              <span class="dot dot-green"></span>
-              <span class="dot dot-yellow"></span>
-              <span class="dot dot-red"></span>
-            </div>
-            <div class="hero-card-body">
-              <p class="hero-status">Best server: Frankfurt, DE</p>
-              <p class="hero-status-sub">Low latency • High speed • No logs</p>
-            </div>
-          </div>
-        </section>
+      <!-- Desktop Header -->
+      <header class="topbar desktop-only">
+        <div class="topbar-inner">
+          <a class="brand" href="./index.html">
+            <img src="./logo.png" alt="VoyFy" class="brand-logo">
+            <span class="brand-name">VoyFy</span>
+          </a>
+          <nav class="topnav">
+            <a class="nav-link active" href="./index.html">Home</a>
+            <a class="nav-link" href="./subscriptions.html">Subscriptions</a>
+            <a class="nav-link" href="./updates.html">Updates</a>
+            <a class="nav-link auth-tab-link" href="./auth.html" id="desktop-auth-link">Sign in</a>
+            <button class="theme-toggle" id="desktop-theme-toggle" aria-label="Toggle theme">
+              <i class="fas fa-sun"></i>
+            </button>
+          </nav>
+        </div>
+      </header>
 
-        <!-- Subscription Dashboard (shown when logged in) -->
-        <section id="dashboard" class="section section-dashboard hidden">
-          <h2>My Subscription</h2>
-          <div class="dashboard-grid">
-            <div class="tariff-card">
-              <div class="tariff-header">
-                <span class="tariff-icon">👑</span>
-                <div class="tariff-info">
-                  <h3>Premium+</h3>
-                  <p class="tariff-status">Active</p>
-                </div>
-              </div>
-              <div class="tariff-progress">
-                <div class="progress-label">
-                  <span>15 days remaining</span>
-                  <span>30 days</span>
-                </div>
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: 50%"></div>
-                </div>
-              </div>
-              <button class="auth-button" onclick="showSection('servers')">Connect to VPN</button>
+      <main class="content">
+        <section id="download" class="section hero">
+          <div class="hero-grid">
+            <div class="hero-left">
+              <h1 class="hero-title">Fast & secure VPN</h1>
+              <p class="hero-subtitle">Download VoyFy for your device. We detect your OS and show the best option.</p>
+              <div id="primary-download" class="primary-download"></div>
+              <a class="ghost-link" href="#all-platforms">All platforms</a>
+              <div class="hero-note">Protocol: XTLS-Reality • No logs • Unlimited bandwidth</div>
             </div>
-
-            <div class="stats-card">
-              <h4>Usage Statistics</h4>
-              <div class="stat-item">
-                <span class="stat-label">Traffic used</span>
-                <span class="stat-value">125 GB</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Connection time</span>
-                <span class="stat-value">48 hours</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Servers used</span>
-                <span class="stat-value">8</span>
+            <div class="hero-right">
+              <div class="hero-card" id="hero-card">
+                <div class="hero-card-top">
+                  <div class="pill">
+                    <span class="pill-dot"></span>
+                    <span>Connected</span>
+                  </div>
+                  <div class="mini">
+                    <div class="mini-k">Ping</div>
+                    <div class="mini-v" id="ping-value">--</div>
+                  </div>
+                </div>
+                <div class="hero-card-mid">
+                  <div class="location-info">
+                    <img src="" alt="" class="flag-img" id="server-flag">
+                    <div>
+                      <div class="big" id="server-name">Loading...</div>
+                      <div class="small" id="server-location">Loading...</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="hero-card-bot">
+                  <div class="bar"><span id="bandwidth-bar" style="width: 0%"></span></div>
+                  <div class="bar-labels"><span>Load</span><span id="load-value">--%</span></div>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section id="auth" class="section section-auth">
-          <h2>Sign in to Voyfy</h2>
-          <div class="auth-grid">
-            <form id="login-form" class="auth-card">
-              <h3>Log in</h3>
-              <label>
-                <span>Login</span>
-                <input type="text" id="login-login" autocomplete="username" required />
-              </label>
-              <label>
-                <span>Password</span>
-                <input
-                  type="password"
-                  id="login-password"
-                  autocomplete="current-password"
-                  required
-                />
-              </label>
-              <button type="submit" class="auth-button">Log in</button>
-              <p class="auth-message" id="login-message"></p>
-            </form>
-
-            <form id="register-form" class="auth-card">
-              <h3>Create account</h3>
-              <label>
-                <span>Nickname</span>
-                <input type="text" id="reg-nick" required />
-              </label>
-              <label>
-                <span>Login</span>
-                <input type="text" id="reg-login" required />
-              </label>
-              <label>
-                <span>Email</span>
-                <input type="email" id="reg-email" required />
-              </label>
-              <label>
-                <span>Password</span>
-                <input type="password" id="reg-password" required />
-              </label>
-              <button type="submit" class="auth-button auth-button-outline">
-                Register
-              </button>
-              <p class="auth-message" id="reg-message"></p>
-            </form>
-
-            <form id="twofa-form" class="auth-card auth-card-hidden">
-              <h3>Two‑factor authentication</h3>
-              <div class="twofa-toggle">
-                <button type="button" id="twofa-mode-totp" class="twofa-mode active">
-                  2FA code
-                </button>
-                <button type="button" id="twofa-mode-backup" class="twofa-mode">
-                  Backup code
-                </button>
-              </div>
-              <p class="twofa-text">
-                <span id="twofa-text-main">
-                  Enter the 2FA code from your authenticator app to complete sign‑in.
-                </span>
-              </p>
-              <label id="twofa-label-totp">
-                <span>2FA code</span>
-                <input type="text" id="twofa-code" inputmode="numeric" />
-              </label>
-              <label id="twofa-label-backup" class="hidden">
-                <span>Backup code</span>
-                <input type="text" id="twofa-backup" />
-              </label>
-              <button type="submit" class="auth-button">Confirm</button>
-              <p class="auth-message" id="twofa-message"></p>
-            </form>
-          </div>
-        </section>
-
-        <section id="download" class="section section-download">
-          <h2>Choose your platform</h2>
+        <section id="platforms-section" class="section platforms-section">
+          <h2 class="section-title">Downloads</h2>
+          <p class="section-subtitle">Choose your platform</p>
           <div id="all-platforms" class="platform-grid"></div>
-        </section>
-
-        <section id="servers" class="section section-servers">
-          <h2>Available VPN servers</h2>
-          <div id="servers-table-wrapper">
-            <table id="servers-table">
-              <thead>
-                <tr>
-                  <th>Location</th>
-                  <th>Host</th>
-                  <th>Ping</th>
-                  <th>Load</th>
-                  <th>Tier</th>
-                </tr>
-              </thead>
-              <tbody id="servers-table-body">
-                <!-- will be filled by JS -->
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="features" class="section">
-          <h2>Why Voyfy VPN</h2>
-          <div class="features-grid">
-            <div class="feature-card">
-              <h3>No logs</h3>
-              <p>We never store your activity or connection logs. Your privacy is our priority.</p>
-            </div>
-            <div class="feature-card">
-              <h3>Global servers</h3>
-              <p>Connect to high-speed servers around the world for the best performance.</p>
-            </div>
-            <div class="feature-card">
-              <h3>Multi-platform</h3>
-              <p>Use Voyfy VPN on Windows, macOS, Linux, Android, and iOS.</p>
-            </div>
-          </div>
-        </section>
-
-        <section id="help" class="section section-help">
-          <h2>Need help?</h2>
-          <p>Email us at <a href="mailto:support@voyfy.vpn">support@voyfy.vpn</a>.</p>
         </section>
       </main>
 
-      <footer class="footer">
-        <span>© <span id="year"></span> Voyfy VPN</span>
+      <!-- Mobile Bottom Navigation -->
+      <nav class="mobile-bottom-nav mobile-only">
+        <a href="./index.html" class="bottom-nav-item active">
+          <i class="fas fa-home"></i>
+          <span>Home</span>
+        </a>
+        <a href="./subscriptions.html" class="bottom-nav-item">
+          <i class="fas fa-crown"></i>
+          <span>Premium</span>
+        </a>
+        <a href="./updates.html" class="bottom-nav-item">
+          <i class="fas fa-bell"></i>
+          <span>Updates</span>
+        </a>
+        <a href="./auth.html" class="bottom-nav-item" id="mobile-auth-link">
+          <i class="fas fa-user"></i>
+          <span id="mobile-auth-text">Sign in</span>
+        </a>
+      </nav>
+
+      <footer class="footer desktop-only">
+        <div class="footer-inner">
+          <span>© <span id="year"></span> VoyFy VPN</span>
+          <a href="mailto:support@voyfy.vpn">support@voyfy.vpn</a>
+        </div>
       </footer>
     </div>
 
     <script src="./os-detect.js"></script>
+    <script>
+      // Load server data from API
+      async function loadServerData() {
+        try {
+          const response = await fetch('http://localhost:4000/api/servers');
+          const data = await response.json();
+
+          if (data.success && data.data.servers.length > 0) {
+            // Get the first active server with lowest load
+            const servers = data.data.servers.filter(s => s.load < 80);
+            const server = servers.length > 0
+              ? servers.sort((a, b) => a.load - b.load)[0]
+              : data.data.servers[0];
+
+            // Update UI
+            document.getElementById('server-name').textContent = server.name;
+            document.getElementById('server-location').textContent = `${server.country} • ${server.premium ? 'Premium' : 'Free'}`;
+            document.getElementById('server-flag').src = `https://flagcdn.com/w80/${server.countryCode.toLowerCase()}.png`;
+            document.getElementById('server-flag').alt = server.countryCode;
+            document.getElementById('ping-value').textContent = Math.floor(Math.random() * 30 + 10) + 'ms'; // Simulated ping
+            document.getElementById('load-value').textContent = server.load + '%';
+            document.getElementById('bandwidth-bar').style.width = server.load + '%';
+          }
+        } catch (error) {
+          console.error('Error loading server data:', error);
+          // Fallback to default data
+          document.getElementById('server-name').textContent = 'Germany';
+          document.getElementById('server-location').textContent = 'Frankfurt • Premium';
+          document.getElementById('server-flag').src = 'https://flagcdn.com/w80/de.png';
+          document.getElementById('server-flag').alt = 'DE';
+          document.getElementById('ping-value').textContent = '12ms';
+          document.getElementById('load-value').textContent = '25%';
+          document.getElementById('bandwidth-bar').style.width = '25%';
+        }
+      }
+
+      // Ensure auth state is checked after DOM and scripts are fully loaded
+      document.addEventListener('DOMContentLoaded', function() {
+        const yearEl = document.getElementById('year');
+        if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+        // Load server data
+        loadServerData();
+        setInterval(loadServerData, 30000); // Refresh every 30 seconds
+
+        // Check auth state with a small delay to ensure os-detect.js is loaded
+        setTimeout(function() {
+          if (typeof checkAuthState === 'function') {
+            checkAuthState();
+          } else {
+            // Fallback: manually check token and update UI
+            const token = localStorage.getItem('voyfy_token');
+            if (token) {
+              const desktopAuthLink = document.getElementById('desktop-auth-link');
+              const mobileAuthLink = document.getElementById('mobile-auth-link');
+              const mobileAuthText = document.getElementById('mobile-auth-text');
+
+              if (desktopAuthLink) {
+                desktopAuthLink.href = './profile.html';
+                desktopAuthLink.classList.add('profile-link');
+                desktopAuthLink.classList.remove('auth-tab-link');
+                desktopAuthLink.innerHTML = '<i class="fas fa-user"></i> Profile';
+              }
+              if (mobileAuthLink) {
+                mobileAuthLink.href = './profile.html';
+                mobileAuthLink.classList.add('profile-link');
+              }
+              if (mobileAuthText) {
+                mobileAuthText.textContent = 'Profile';
+              }
+            }
+          }
+        }, 100);
+      });
+    </script>
   </body>
-  </html>
-
-
+</html>

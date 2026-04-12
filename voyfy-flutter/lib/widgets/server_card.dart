@@ -15,12 +15,15 @@ class ServerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200),
       ),
       child: Row(
         children: [
