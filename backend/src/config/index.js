@@ -43,9 +43,12 @@ const config = {
   
   // CORS
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : '*',
     credentials: true,
   },
+
+  // Frontend URL
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',

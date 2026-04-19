@@ -5,16 +5,9 @@ import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_vpni/screens/aboutsub_sccreen.dart';
-import 'package:flutter_vpni/screens/account_sccreen.dart';
-import 'package:flutter_vpni/screens/change_language.dart';
-import 'package:flutter_vpni/screens/login_screen.dart';
-import 'package:flutter_vpni/screens/privacy_policy_screen.dart';
-import 'package:flutter_vpni/screens/server_location.dart';
-import 'package:flutter_vpni/screens/terms_of_service_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:provider/provider.dart';
+import '../config/api_config.dart';
 
 import '../providers/theme_provider.dart';
 import 'home/home_content.dart';
@@ -119,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> changeServer(int serverId) async {
     try {
-      final uri = Uri.parse('http://localhost:4000/api/servers');
+      final uri = Uri.parse(ApiConfig.servers);
       final res = await http.get(uri);
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body.toString());

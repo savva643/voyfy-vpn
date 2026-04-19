@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 
 const kGradientStart = Color(0xFF0038FF);
 const kGradientEnd = Color(0xFF8220F9);
@@ -48,7 +49,7 @@ class _ServerLocationState extends State<ServerLocation> {
 
   Future<void> _loadServerData() async {
     try {
-      final uri = Uri.parse('http://localhost:4000/api/servers');
+      final uri = Uri.parse(ApiConfig.servers);
       final res = await http.get(uri);
       if (res.statusCode == 200) {
         final decoded = json.decode(res.body.toString());

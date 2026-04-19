@@ -1,0 +1,311 @@
+#!/bin/bash
+
+# Voyfy VPN Docker Deployment Script
+# Run this on your VPS: 185.164.163.166
+
+set -e
+
+echo "======================================"
+echo "Voyfy VPN Docker Deployment"
+echo "======================================"
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then 
+    echo "Please run as root (sudo)"
+    exit 1
+fi
+
+# Configuration
+DOMAIN="vip.necsoura.ru"
+IP="185.164.163.166"
+PROJECT_DIR="/var/www/voyfy-vpn"
+DOCKER_DIR="$PROJECT_DIR/docker"
+
+echo "Domain: $DOMAIN"
+echo "IP: $IP"
+echo "Project directory: $PROJECT_DIR"
+echo "======================================"
+
+# Step 1: Update system
+echo "Step 1: Updating system..."
+apt update && apt upgrade -y
+
+# Step 2: Install Docker and dependencies
+echo "Step 2: Installing Docker and dependencies..."
+apt install -y curl git ufw
+
+# Remove old Docker versions if present
+apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# Install Docker Compose plugin
+apt install -y docker-compose-plugin
+
+# Add current user to docker group (if not root)
+if [ -n "$SUDO_USER" ]; then
+    usermod -aG docker $SUDO_USER
+fi
+
+# Enable and start Docker
+systemctl enable docker
+systemctl start docker
+
+echo "Docker version: $(docker --version)"
+echo "Docker Compose version: $(docker compose version)"
+
+# Step 3: Clone repository
+echo "Step 3: Cloning repository..."
+mkdir -p /var/www
+cd /var/www
+if [ -d "voyfy-vpn" ]; then
+    cd voyfy-vpn
+    git pull
+else
+    git clone https://github.com/savva643/voyfy-vpn.git
+    cd voyfy-vpn
+fi
+
+# Step 4: Generate secrets
+echo "Step 4: Generating secrets..."
+DB_PASSWORD=$(openssl rand -base64 32)
+JWT_SECRET=$(openssl rand -hex 32)
+JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+ADMIN_API_KEY=$(openssl rand -hex 32)
+
+# Generate Xray keys
+echo "Generating Xray keys..."
+XRAY_KEYS=$(docker run --rm teddysun/xray xray x25519)
+XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | grep "Private key" | awk '{print $3}')
+XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS" | grep "Public key" | awk '{print $3}')
+XRAY_SHORT_ID=$(openssl rand -hex 8)
+
+echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
+echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
+echo "XRAY Short ID: $XRAY_SHORT_ID"
+
+# Step 5: Create .env file for Docker
+echo "Step 5: Creating .env file..."
+cd docker
+cat > .env <<EOF
+# Database Configuration
+DB_USER=voyfy
+DB_PASSWORD=$DB_PASSWORD
+DB_NAME=voyfy_vpn
+
+# JWT Configuration
+JWT_SECRET=$JWT_SECRET
+JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
+
+# Xray Configuration
+XRAY_PUBLIC_KEY=$XRAY_PUBLIC_KEY
+XRAY_PRIVATE_KEY=$XRAY_PRIVATE_KEY
+XRAY_SERVER_NAME=www.microsoft.com
+XRAY_SHORT_ID=$XRAY_SHORT_ID
+XRAY_PORT=8443
+XRAY_API_PORT=10085
+
+# Admin API Key
+ADMIN_API_KEY=$ADMIN_API_KEY
+EOF
+
+echo "Docker .env created"
+
+# Step 6: Setup SSL certificates
+echo "Step 6: Setting up SSL certificates..."
+apt install -y certbot
+
+# Stop nginx if running to free port 80
+systemctl stop nginx 2>/dev/null || true
+
+# Get SSL certificate
+certbot certonly --standalone \
+    -d "$DOMAIN" \
+    --email "admin@$DOMAIN" \
+    --agree-tos \
+    --non-interactive
+
+# Setup auto-renewal
+(crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet") | crontab -
+
+# Step 7: Update Nginx config for Docker
+echo "Step 7: Updating Nginx configuration..."
+mkdir -p $DOCKER_DIR/nginx/ssl
+
+# Copy SSL certificates to docker directory
+cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $DOCKER_DIR/nginx/ssl/
+cp /etc/letsencrypt/live/$DOMAIN/privkey.pem $DOCKER_DIR/nginx/ssl/
+chown -R 1000:1000 $DOCKER_DIR/nginx/ssl
+
+# Create HTTPS nginx config for Docker
+cat > $DOCKER_DIR/nginx/nginx-https.conf <<'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
+
+    upstream api_backend {
+        server api:4000;
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+        server_name vip.necsoura.ru 185.164.163.166;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name vip.necsoura.ru 185.164.163.166;
+
+        ssl_certificate /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+        ssl_prefer_server_ciphers off;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+
+        location /api/ {
+            proxy_pass http://api_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        location /admin {
+            proxy_pass http://api_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        location /health {
+            proxy_pass http://api_backend/api/health;
+            access_log off;
+        }
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+            
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+    }
+}
+EOF
+
+# Update docker-compose.yml to use HTTPS nginx
+sed -i 's|nginx-http.conf|nginx-https.conf|g' $DOCKER_DIR/docker-compose.yml
+
+# Step 8: Build and start Docker containers
+echo "Step 8: Building and starting Docker containers..."
+cd $DOCKER_DIR
+
+# Build images
+docker compose build
+
+# Start containers
+docker compose up -d
+
+# Wait for services to be ready
+echo "Waiting for services to start..."
+sleep 10
+
+# Check status
+docker compose ps
+
+# Step 9: Configure Firewall
+echo "Step 9: Configuring firewall..."
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 443/udp
+ufw allow 8443/tcp
+ufw allow 8443/udp
+ufw --force enable
+
+# Step 10: Setup SSL auto-renewal hook
+echo "Step 10: Setting up SSL auto-renewal..."
+cat > /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh <<'EOF'
+#!/bin/bash
+# Copy renewed certificates to Docker nginx
+cp /etc/letsencrypt/live/vip.necsoura.ru/fullchain.pem /var/www/voyfy-vpn/docker/nginx/ssl/
+cp /etc/letsencrypt/live/vip.necsoura.ru/privkey.pem /var/www/voyfy-vpn/docker/nginx/ssl/
+chown -R 1000:1000 /var/www/voyfy-vpn/docker/nginx/ssl
+docker compose -f /var/www/voyfy-vpn/docker/docker-compose.yml restart nginx
+EOF
+
+chmod +x /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh
+
+echo "======================================"
+echo "Deployment Complete!"
+echo "======================================"
+echo "Frontend: https://$DOMAIN"
+echo "Admin Panel: https://$DOMAIN/admin"
+echo "API: https://$DOMAIN/api"
+echo "Health Check: https://$DOMAIN/health"
+echo "======================================"
+echo "IMPORTANT: Save these credentials!"
+echo "======================================"
+echo "Database Password: $DB_PASSWORD"
+echo "JWT Secret: $JWT_SECRET"
+echo "JWT Refresh Secret: $JWT_REFRESH_SECRET"
+echo "Admin API Key: $ADMIN_API_KEY"
+echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
+echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
+echo "XRAY Short ID: $XRAY_SHORT_ID"
+echo "======================================"
+echo "Next steps:"
+echo "1. Open https://$DOMAIN/admin"
+echo "2. Register first user"
+echo "3. Make user admin in database"
+echo "4. Create pairing code for VPN server"
+echo "======================================"

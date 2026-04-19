@@ -44,7 +44,7 @@ class HomeContent extends StatelessWidget {
   Widget _buildMobileLayout(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
-      children: [ 
+      children: [
         _buildHeader(context),
         SizedBox(
           height: 240,
