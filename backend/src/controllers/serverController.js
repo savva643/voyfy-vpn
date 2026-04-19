@@ -456,14 +456,15 @@ const getAdminServers = async (req, res) => {
 const serverHeartbeat = async (req, res) => {
   try {
     const { id } = req.params;
-    const { loadPercent, currentUsers } = req.body;
+    const { loadPercent, currentUsers, ping } = req.body;
     
+    // Обновляем нагрузку, пользователей, пинг и время последнего контакта
     await query(
-      `UPDATE vpn_servers SET load_percentage = $1, current_users = $2, last_seen = NOW() WHERE id = $3`,
-      [loadPercent || 0, currentUsers || 0, id]
+      `UPDATE vpn_servers SET load_percentage = $1, current_users = $2, ping_ms = $3, last_seen = NOW(), is_active = true WHERE id = $4`,
+      [loadPercent || 0, currentUsers || 0, ping || null, id]
     );
     
-    res.json({ success: true });
+    res.json({ success: true, received: { loadPercent, currentUsers, ping } });
   } catch (err) {
     logger.error('Heartbeat error', err);
     res.status(500).json({ success: false, message: 'Failed to update heartbeat' });
@@ -566,12 +567,26 @@ const verifyPairingCode = async (req, res) => {
     
     const codeData = result.rows[0];
     
+    // Map country codes to full names
+    const countryNames = {
+      'NL': 'Netherlands', 'DE': 'Germany', 'US': 'United States', 'GB': 'United Kingdom',
+      'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'PL': 'Poland', 'UA': 'Ukraine',
+      'RU': 'Russia', 'TR': 'Turkey', 'SG': 'Singapore', 'JP': 'Japan', 'KR': 'South Korea',
+      'AU': 'Australia', 'CA': 'Canada', 'BR': 'Brazil', 'IN': 'India', 'CN': 'China',
+      'SE': 'Sweden', 'NO': 'Norway', 'FI': 'Finland', 'DK': 'Denmark', 'CH': 'Switzerland',
+      'AT': 'Austria', 'BE': 'Belgium', 'CZ': 'Czech Republic', 'RO': 'Romania',
+      'HU': 'Hungary', 'PT': 'Portugal', 'GR': 'Greece', 'IL': 'Israel', 'AE': 'UAE'
+    };
+    
+    const countryCode = codeData.country_code || codeData.country;
+    const countryName = countryNames[countryCode] || codeData.country || countryCode;
+    
     res.json({
       success: true,
       valid: true,
       serverName: codeData.server_name,
-      country: codeData.country,
-      countryCode: codeData.country_code,
+      country: countryName,
+      countryCode: countryCode,
       premium: codeData.premium
     });
   } catch (err) {
