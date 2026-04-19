@@ -18,54 +18,103 @@ fi
 # Configuration
 DOMAIN="vip.necsoura.ru"
 IP="185.164.163.166"
-PROJECT_DIR="/var/www/voyfy-vpn"
+PROJECT_DIR="/opt/voyfy-vpn"
 DOCKER_DIR="$PROJECT_DIR/docker"
+
+# Check if running from project directory
+if [ -f "$(pwd)/deploy.sh" ]; then
+    PROJECT_DIR="$(pwd)"
+    DOCKER_DIR="$PROJECT_DIR/docker"
+    echo "Running from existing project directory: $PROJECT_DIR"
+fi
 
 echo "Domain: $DOMAIN"
 echo "IP: $IP"
 echo "Project directory: $PROJECT_DIR"
 echo "======================================"
 
+# Parse command line arguments
+SKIP_UPDATE=false
+SKIP_DOCKER=false
+SKIP_SSL=false
+SKIP_FIREWALL=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-update) SKIP_UPDATE=true ;;
+        --skip-docker) SKIP_DOCKER=true ;;
+        --skip-ssl) SKIP_SSL=true ;;
+        --skip-firewall) SKIP_FIREWALL=true ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "Options:"
+            echo "  --skip-update    Skip system update"
+            echo "  --skip-docker    Skip Docker installation"
+            echo "  --skip-ssl       Skip SSL certificate setup"
+            echo "  --skip-firewall  Skip firewall configuration"
+            echo "  --help           Show this help"
+            exit 0
+            ;;
+    esac
+    shift
+done
+
 # Step 1: Update system
-echo "Step 1: Updating system..."
-apt update && apt upgrade -y
-
-# Step 2: Install Docker and dependencies
-echo "Step 2: Installing Docker and dependencies..."
-apt install -y curl git ufw
-
-# Remove old Docker versions if present
-apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-
-# Install Docker Compose plugin
-apt install -y docker-compose-plugin
-
-# Add current user to docker group (if not root)
-if [ -n "$SUDO_USER" ]; then
-    usermod -aG docker $SUDO_USER
+if [ "$SKIP_UPDATE" = false ]; then
+    echo "Step 1: Updating system..."
+    apt update && apt upgrade -y
+else
+    echo "Step 1: Skipping system update..."
 fi
 
-# Enable and start Docker
-systemctl enable docker
-systemctl start docker
+# Step 2: Install Docker and dependencies
+if [ "$SKIP_DOCKER" = false ]; then
+    echo "Step 2: Installing Docker and dependencies..."
+    apt install -y curl git ufw
+
+    # Remove old Docker versions if present
+    apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+
+    # Install Docker
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+
+    # Install Docker Compose plugin
+    apt install -y docker-compose-plugin
+
+    # Add current user to docker group (if not root)
+    if [ -n "$SUDO_USER" ]; then
+        usermod -aG docker $SUDO_USER
+    fi
+
+    # Enable and start Docker
+    systemctl enable docker
+    systemctl start docker
+else
+    echo "Step 2: Skipping Docker installation..."
+fi
+
+# Verify Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "ERROR: Docker is not installed!"
+    exit 1
+fi
 
 echo "Docker version: $(docker --version)"
 echo "Docker Compose version: $(docker compose version)"
 
 # Step 3: Clone repository
-echo "Step 3: Cloning repository..."
-mkdir -p /var/www
-cd /var/www
-if [ -d "voyfy-vpn" ]; then
-    cd voyfy-vpn
-    git pull
+echo "Step 3: Checking repository..."
+if [ -d "$PROJECT_DIR" ]; then
+    echo "Repository already exists at $PROJECT_DIR"
+    cd "$PROJECT_DIR"
+    echo "Pulling latest changes..."
+    git pull || echo "Git pull failed, continuing anyway"
 else
-    git clone https://github.com/savva643/voyfy-vpn.git
-    cd voyfy-vpn
+    echo "Cloning repository to $PROJECT_DIR..."
+    mkdir -p "$(dirname "$PROJECT_DIR")"
+    git clone https://github.com/savva643/voyfy-vpn.git "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
 fi
 
 # Step 4: Generate secrets
@@ -78,9 +127,16 @@ ADMIN_API_KEY=$(openssl rand -hex 32)
 # Generate Xray keys
 echo "Generating Xray keys..."
 XRAY_KEYS=$(docker run --rm teddysun/xray xray x25519)
-XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | grep "Private key" | awk '{print $3}')
-XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS" | grep "Public key" | awk '{print $3}')
+XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | grep "Private key:" | awk '{print $3}')
+XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS" | grep "Public key:" | awk '{print $3}')
 XRAY_SHORT_ID=$(openssl rand -hex 8)
+
+# Fallback if keys are empty
+if [ -z "$XRAY_PRIVATE_KEY" ] || [ -z "$XRAY_PUBLIC_KEY" ]; then
+    echo "WARNING: Xray key generation failed, using fallback method"
+    XRAY_PRIVATE_KEY=$(docker run --rm teddysun/xray xray x25519 | tail -1)
+    XRAY_PUBLIC_KEY=$(docker run --rm teddysun/xray xray x25519 | tail -1)
+fi
 
 echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
 echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
@@ -114,33 +170,55 @@ EOF
 echo "Docker .env created"
 
 # Step 6: Setup SSL certificates
-echo "Step 6: Setting up SSL certificates..."
-apt install -y certbot
+if [ "$SKIP_SSL" = false ]; then
+    echo "Step 6: Setting up SSL certificates..."
 
-# Stop nginx if running to free port 80
-systemctl stop nginx 2>/dev/null || true
+    # Check if certificate already exists
+    if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+        echo "SSL certificate already exists for $DOMAIN, skipping..."
+    else
+        apt install -y certbot
 
-# Get SSL certificate
-certbot certonly --standalone \
-    -d "$DOMAIN" \
-    --email "admin@$DOMAIN" \
-    --agree-tos \
-    --non-interactive
+        # Stop nginx if running to free port 80
+        systemctl stop nginx 2>/dev/null || true
+        docker compose -f "$DOCKER_DIR/docker-compose.yml" down nginx 2>/dev/null || true
 
-# Setup auto-renewal
-(crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet") | crontab -
+        # Get SSL certificate
+        echo "Requesting SSL certificate for $DOMAIN..."
+        certbot certonly --standalone \
+            -d "$DOMAIN" \
+            --email "admin@$DOMAIN" \
+            --agree-tos \
+            --non-interactive || {
+            echo "WARNING: SSL certificate failed to obtain. Continuing without SSL..."
+            echo "You can configure SSL later manually."
+        }
+
+        # Setup auto-renewal
+        (crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet") | crontab -
+    fi
+else
+    echo "Step 6: Skipping SSL certificate setup..."
+fi
 
 # Step 7: Update Nginx config for Docker
 echo "Step 7: Updating Nginx configuration..."
 mkdir -p $DOCKER_DIR/nginx/ssl
 
-# Copy SSL certificates to docker directory
-cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $DOCKER_DIR/nginx/ssl/
-cp /etc/letsencrypt/live/$DOMAIN/privkey.pem $DOCKER_DIR/nginx/ssl/
-chown -R 1000:1000 $DOCKER_DIR/nginx/ssl
+# Copy SSL certificates to docker directory (only if they exist)
+if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+    cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $DOCKER_DIR/nginx/ssl/
+    cp /etc/letsencrypt/live/$DOMAIN/privkey.pem $DOCKER_DIR/nginx/ssl/
+    chown -R 1000:1000 $DOCKER_DIR/nginx/ssl
+    USE_SSL=true
+else
+    echo "No SSL certificates found, using HTTP only..."
+    USE_SSL=false
+fi
 
-# Create HTTPS nginx config for Docker
-cat > $DOCKER_DIR/nginx/nginx-https.conf <<'EOF'
+# Create HTTPS nginx config for Docker (only if SSL available)
+if [ "$USE_SSL" = true ]; then
+    cat > $DOCKER_DIR/nginx/nginx-https.conf <<'EOF'
 events {
     worker_connections 1024;
 }
@@ -204,7 +282,7 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
@@ -217,7 +295,7 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
@@ -232,7 +310,7 @@ http {
             root /usr/share/nginx/html;
             index index.html;
             try_files $uri $uri/ /index.html;
-            
+
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
                 expires 1y;
                 add_header Cache-Control "public, immutable";
@@ -242,8 +320,12 @@ http {
 }
 EOF
 
-# Update docker-compose.yml to use HTTPS nginx
-sed -i 's|nginx-http.conf|nginx-https.conf|g' $DOCKER_DIR/docker-compose.yml
+    # Update docker-compose.yml to use HTTPS nginx
+    sed -i 's|nginx-http.conf|nginx-https.conf|g' $DOCKER_DIR/docker-compose.yml
+    echo "Using HTTPS nginx configuration"
+else
+    echo "Using HTTP nginx configuration (no SSL)"
+fi
 
 # Step 8: Build and start Docker containers
 echo "Step 8: Building and starting Docker containers..."
@@ -263,7 +345,8 @@ sleep 10
 docker compose ps
 
 # Step 9: Configure Firewall
-echo "Step 9: Configuring firewall..."
+if [ "$SKIP_FIREWALL" = false ]; then
+    echo "Step 9: Configuring firewall..."
 
 # Reset UFW to default state
 ufw --force reset
@@ -301,6 +384,9 @@ ufw --force enable
 
 echo "Firewall status:"
 ufw status verbose
+else
+    echo "Step 9: Skipping firewall configuration..."
+fi
 
 # Step 10: Setup SSL auto-renewal hook
 echo "Step 10: Setting up SSL auto-renewal..."
@@ -318,10 +404,15 @@ chmod +x /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh
 echo "======================================"
 echo "Deployment Complete!"
 echo "======================================"
-echo "Frontend: https://$DOMAIN"
-echo "Admin Panel: https://$DOMAIN/admin"
-echo "API: https://$DOMAIN/api"
-echo "Health Check: https://$DOMAIN/health"
+if [ "$USE_SSL" = true ]; then
+    PROTOCOL="https"
+else
+    PROTOCOL="http"
+fi
+echo "Frontend: $PROTOCOL://$DOMAIN"
+echo "Admin Panel: $PROTOCOL://$DOMAIN/admin"
+echo "API: $PROTOCOL://$DOMAIN/api"
+echo "Health Check: $PROTOCOL://$DOMAIN/health"
 echo "======================================"
 echo "IMPORTANT: Save these credentials!"
 echo "======================================"
