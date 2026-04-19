@@ -264,13 +264,43 @@ docker compose ps
 
 # Step 9: Configure Firewall
 echo "Step 9: Configuring firewall..."
+
+# Reset UFW to default state
+ufw --force reset
+
+# Set default policies
+ufw default deny incoming
+ufw default allow outgoing
+
+# Allow SSH (CRITICAL - do this FIRST)
 ufw allow 22/tcp
+ufw allow 22/udp
+
+# Allow current SSH connection to prevent lockout
+CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+if [ -n "$CURRENT_IP" ]; then
+    echo "Allowing SSH from current IP: $CURRENT_IP"
+    ufw allow from $CURRENT_IP to any port 22
+fi
+
+# Allow HTTP/HTTPS
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 443/udp
+
+# Allow VPN port
 ufw allow 8443/tcp
 ufw allow 8443/udp
+
+# Show rules before enabling
+echo "Firewall rules:"
+ufw show added
+
+# Enable firewall
 ufw --force enable
+
+echo "Firewall status:"
+ufw status verbose
 
 # Step 10: Setup SSL auto-renewal hook
 echo "Step 10: Setting up SSL auto-renewal..."
