@@ -62,6 +62,7 @@ fi
 
 SERVER_NAME=$(echo "$VERIFY_RESPONSE" | jq -r '.serverName')
 SERVER_COUNTRY=$(echo "$VERIFY_RESPONSE" | jq -r '.country')
+SERVER_COUNTRY_CODE=$(echo "$VERIFY_RESPONSE" | jq -r '.countryCode')
 SERVER_PREMIUM=$(echo "$VERIFY_RESPONSE" | jq -r '.premium')
 
 echo -e "${GREEN}✅ Код верифицирован${NC}"
@@ -196,11 +197,15 @@ RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/register" \
     -H "Content-Type: application/json" \
     -d "{
         \"pairingCode\": \"$PAIRING_CODE\",
+        \"name\": \"$SERVER_NAME\",
+        \"country\": \"$SERVER_COUNTRY\",
+        \"countryCode\": \"$SERVER_COUNTRY_CODE\",
         \"host\": \"$SERVER_IP\",
         \"port\": 443,
         \"publicKey\": \"$PUBLIC_KEY\",
         \"serverNames\": [\"www.google.com\", \"www.youtube.com\"],
-        \"shortId\": \"$SHORT_ID\"
+        \"shortId\": \"$SHORT_ID\",
+        \"premium\": $SERVER_PREMIUM
     }" 2>/dev/null)
 
 if echo "$RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
