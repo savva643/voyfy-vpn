@@ -325,10 +325,10 @@ const registerServer = async (req, res) => {
       codeData = codeResult.rows[0];
     }
 
-    // Use data from pairing code if available
-    const serverName = codeData ? codeData.server_name : name;
-    const serverCountry = codeData ? codeData.country : country;
-    const serverPremium = codeData ? codeData.premium : premium;
+    // Use data from request first, fallback to pairing code if available
+    const serverName = name || (codeData ? codeData.server_name : null);
+    const serverCountry = country || (codeData ? codeData.country : null);
+    const serverPremium = premium !== undefined ? premium : (codeData ? codeData.premium : false);
     const serverProvider = codeData ? codeData.provider : null;
 
     if (!serverName || !serverCountry || !host || !publicKey) {

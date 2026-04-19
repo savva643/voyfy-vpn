@@ -235,7 +235,7 @@ if echo "$RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
 EOF
     
     # Установка heartbeat
-    cp "$(dirname "$0")/heartbeat.sh" /opt/voyfy/heartbeat.sh
+    curl -fsSL "$API_ENDPOINT/vpn-server/heartbeat.sh" -o /opt/voyfy/heartbeat.sh
     chmod +x /opt/voyfy/heartbeat.sh
     
     # Systemd сервис для heartbeat
