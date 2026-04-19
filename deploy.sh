@@ -306,6 +306,16 @@ http {
             access_log off;
         }
 
+        # VPN server installation scripts
+        location /vpn-server/ {
+            alias /usr/share/nginx/vpn-server/;
+            autoindex off;
+            types {
+                application/x-sh sh;
+            }
+            default_type application/x-sh;
+        }
+
         location / {
             root /usr/share/nginx/html;
             index index.html;

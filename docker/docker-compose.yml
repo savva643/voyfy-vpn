@@ -91,6 +91,7 @@ services:
       - ./nginx/nginx-https.conf:/etc/nginx/nginx-https.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ../frontend:/usr/share/nginx/html:ro
+      - ../vpn-server:/usr/share/nginx/vpn-server:ro
     ports:
       - "80:80"
       - "443:443"

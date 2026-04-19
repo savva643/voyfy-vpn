@@ -30,10 +30,10 @@ if [[ -z "$PAIRING_CODE" ]]; then
     echo -e "${RED}❌ Не указан код привязки${NC}"
     echo ""
     echo -e "${YELLOW}📋 Использование:${NC}"
-    echo "  curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- \"VOYFY-XXXXXX\""
+    echo "  curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | bash -s -- \"VOYFY-XXXXXX\""
     echo ""
     echo -e "${YELLOW}💡 Получите код в админ-панели:${NC}"
-    echo "  https://your-domain.com/admin"
+    echo "  https://vip.necsoura.ru/admin"
     exit 1
 fi
 

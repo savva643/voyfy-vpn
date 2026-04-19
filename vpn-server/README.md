@@ -5,22 +5,22 @@
 ## Быстрый старт
 
 ### 1. Получите ключ активации
-В админ-панели `https://your-domain.com/admin` создайте ключ активации.
+В админ-панели `https://vip.necsoura.ru/admin` создайте ключ активации.
 
 ### 2. Запустите установку на новом VPS
 
 ```bash
-export API_ENDPOINT="https://your-domain.com"
+export API_ENDPOINT="https://vip.necsoura.ru"
 export ACTIVATION_KEY="voyfy_xxxxx"
 
-curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash
+curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | sudo bash
 ```
 
 Или скачайте и запустите:
 ```bash
-wget https://your-domain.com/vpn-server/install.sh
+wget https://vip.necsoura.ru/vpn-server/install.sh
 chmod +x install.sh
-sudo API_ENDPOINT="https://your-domain.com" ACTIVATION_KEY="voyfy_xxxxx" ./install.sh
+sudo API_ENDPOINT="https://vip.necsoura.ru" ACTIVATION_KEY="voyfy_xxxxx" ./install.sh
 ```
 
 ### 3. Проверка статуса
