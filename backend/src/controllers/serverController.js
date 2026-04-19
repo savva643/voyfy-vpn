@@ -509,7 +509,7 @@ const createPairingCode = async (req, res) => {
       premium,
       provider,
       expiresAt,
-      installCommand: `curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "${code}"`
+      installCommand: `curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | sudo bash -s -- "${code}"`
     });
   } catch (err) {
     logger.error('Create pairing code error', err);

@@ -328,7 +328,7 @@
                         <li>Откройте терминал на сервере</li>
                         <li>Выполните команду:</li>
                     </ol>
-                    <pre style="margin-top: 10px;">curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "<span id="codeInCommand">CODE</span>"</pre>
+                    <pre style="margin-top: 10px;">curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | sudo bash -s -- "<span id="codeInCommand">CODE</span>"</pre>
                 </div>
                 
                 <button class="btn btn-primary" onclick="copyInstallCommand()">📋 Копировать команду</button>
@@ -467,7 +467,7 @@
 
         function copyInstallCommand() {
             const code = document.getElementById('pairingCodeDisplay').textContent;
-            const command = `curl -fsSL https://your-domain.com/vpn-server/install.sh | sudo bash -s -- "${code}"`;
+            const command = `curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | sudo bash -s -- "${code}"`;
             navigator.clipboard.writeText(command).then(() => alert('Команда скопирована!'));
         }
 
