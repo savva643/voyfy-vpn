@@ -373,7 +373,16 @@ const registerServer = async (req, res) => {
     }
 
     // Create new server
+        // Create new server
     const serverId = uuidv4();
+    
+    // Ensure countryCode is a short code (2-3 chars), not full country name
+    let finalCountryCode = countryCode;
+    if (!finalCountryCode || finalCountryCode.length > 3) {
+      // Extract code from pairing code data or use first 2 chars of country
+      finalCountryCode = (codeData && codeData.country_code) ? codeData.country_code : serverCountry.substring(0, 2).toUpperCase();
+    }
+    
     await query(
       `INSERT INTO vpn_servers (id, name, country, country_code, host, port,
        protocol, public_key, server_names, short_id, premium, provider, is_active, created_at)
@@ -382,7 +391,7 @@ const registerServer = async (req, res) => {
         serverId,
         serverName,
         serverCountry,
-        countryCode || serverCountry,
+        finalCountryCode,
         host,
         port,
         'vless',

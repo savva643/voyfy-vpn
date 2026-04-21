@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/api_config.dart';
 import '../models/auth.dart';
 import '../models/user.dart';
 import '../models/vpn_server.dart';
@@ -27,7 +28,7 @@ class ApiException implements Exception {
 /// Handles all communication with the backend API
 class ApiService {
   // Base URL - can be changed in settings
-  static String _baseUrl = 'http://localhost:4000';
+  static String _baseUrl = ApiConfig.baseUrl;
   static String get baseUrl => _baseUrl;
   
   static set baseUrl(String url) {

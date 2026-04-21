@@ -2,13 +2,13 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 class ServerCard extends StatelessWidget {
-  final AssetImage am;
+  final String flagUrl;
   final String nameserver;
   final bool isfree;
 
   const ServerCard({
     Key? key,
-    required this.am,
+    required this.flagUrl,
     required this.nameserver,
     required this.isfree,
   }) : super(key: key);
@@ -29,7 +29,19 @@ class ServerCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 28,
-            backgroundImage: am,
+            backgroundImage: NetworkImage(flagUrl),
+            onBackgroundImageError: (e, s) {},
+            child: ClipOval(
+              child: Image.network(
+                flagUrl,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Image.asset('assets/images/usa.jpeg', fit: BoxFit.cover);
+                },
+              ),
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(

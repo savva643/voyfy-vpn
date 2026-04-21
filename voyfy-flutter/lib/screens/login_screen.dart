@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
 
+import '../config/api_config.dart';
 import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -480,7 +481,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final uri = Uri.parse("http://localhost:4000/api/auth/login");
+      final uri = Uri.parse(ApiConfig.authLogin);
 
       final response = await http.post(
         uri,
@@ -504,9 +505,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if ((response.statusCode == 200 || response.statusCode == 201) && tokens != null && tokens['accessToken'] != null) {
         print('LOGIN SUCCESS: token=${tokens['accessToken']}');
         await ApiService.setTokens(tokens['accessToken'], tokens['refreshToken'] ?? '');
+        print('LOGIN DATA: data=$data');
+        print('LOGIN UUID: uuid=${data?['uuid']}, userId=${data?['userId']}, id=${data?['id']}');
         await SharedPreferences.getInstance().then((prefs) {
           prefs.setString('email', email);
           prefs.setString('subscription_type', data?['subscription'] ?? 'Free');
+          // Save UUID for VPN subscription - try multiple possible field names
+          final uuid = data?['uuid'] ?? data?['userId'] ?? data?['id'];
+          if (uuid != null) {
+            prefs.setString('user_uuid', uuid);
+            print('UUID SAVED: $uuid');
+          } else {
+            print('UUID NOT FOUND in response!');
+          }
         });
         print('TOKENS SAVED: access_token, refresh_token, email, subscription_type saved to prefs');
 

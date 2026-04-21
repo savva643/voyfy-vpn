@@ -11,14 +11,30 @@ add_executable(${BINARY_NAME} WIN32
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
+  "vpn_service.cpp"
+  "tun_simple.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
 )
 
+# Windows Service target. Runs as LocalSystem and manages Xray + TUN.
+add_executable(VoyfyVpnService WIN32
+  "voyfy_vpn_windows_service.cpp"
+)
+
+# Pre-build: Stop the service to avoid file lock during build
+add_custom_command(TARGET VoyfyVpnService PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E echo "Stopping VoyfyVpnService if running..."
+  COMMAND sc stop VoyfyVpnService 2>NUL || (exit 0)
+  COMMAND ${CMAKE_COMMAND} -E sleep 1
+  VERBATIM
+)
+
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
+apply_standard_settings(VoyfyVpnService)
 
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
@@ -32,8 +48,12 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
-target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
+target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app wininet iphlpapi ws2_32 ole32)
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+
+target_compile_definitions(VoyfyVpnService PRIVATE "NOMINMAX")
+target_link_libraries(VoyfyVpnService PRIVATE iphlpapi ws2_32 ole32)
+target_include_directories(VoyfyVpnService PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

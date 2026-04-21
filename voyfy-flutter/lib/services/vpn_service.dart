@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter_vpnengine/vpnclient_engine_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:archive/archive.dart';
 
-/// VPN Connection Status
+/// VPN Status
 enum VpnStatus {
   disconnected,
   connecting,
@@ -11,19 +14,9 @@ enum VpnStatus {
   error,
 }
 
-/// VPN Error Types
-enum VpnErrorType {
-  permissionDenied,
-  serverUnreachable,
-  authenticationFailed,
-  configurationError,
-  timeout,
-  unknown,
-}
-
 /// VPN Error
 class VpnError {
-  final VpnErrorType type;
+  final String type;
   final String message;
   final String? details;
 
@@ -32,204 +25,158 @@ class VpnError {
     required this.message,
     this.details,
   });
-
-  @override
-  String toString() => 'VpnError(type: $type, message: $message)';
 }
 
-/// Data Usage Info
+/// Data Usage
 class DataUsage {
   final int bytesSent;
   final int bytesReceived;
-  final int totalBytes;
   final DateTime timestamp;
 
   DataUsage({
     required this.bytesSent,
     required this.bytesReceived,
     DateTime? timestamp,
-  })  : totalBytes = bytesSent + bytesReceived,
-        timestamp = timestamp ?? DateTime.now();
-
-  /// Format bytes for display
-  String get formattedSent => _formatBytes(bytesSent);
-  String get formattedReceived => _formatBytes(bytesReceived);
-  String get formattedTotal => _formatBytes(totalBytes);
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
+  }) : timestamp = timestamp ?? DateTime.now();
 }
 
-/// VPN Service Interface
-/// This is a placeholder implementation that will be replaced with
-/// actual flutter_vpnengine plugin integration once it's available.
-/// 
-/// For now, this provides the API structure that will be used.
+/// VPN Service using flutter_vpnengine plugin
 class VpnService {
-  // Singleton instance
   static final VpnService _instance = VpnService._internal();
+  static VpnService get instance => _instance;
   factory VpnService() => _instance;
   VpnService._internal();
 
-  // Method channel for platform communication (if needed)
-  static const MethodChannel _channel = MethodChannel('com.voyfy.vpn/engine');
-
-  // Stream controllers for status updates
   final _statusController = StreamController<VpnStatus>.broadcast();
   final _dataUsageController = StreamController<DataUsage>.broadcast();
   final _errorController = StreamController<VpnError>.broadcast();
 
-  // Public streams
+  // Windows MethodChannels
+  static const MethodChannel _windowsChannel = MethodChannel('com.voyfy.vpn/windows');
+  static const MethodChannel _windowsDataChannel = MethodChannel('com.voyfy.vpn/data');
+
+  // Platform check
+  bool get _isWindows => Platform.isWindows;
+
   Stream<VpnStatus> get onStatusChanged => _statusController.stream;
   Stream<DataUsage> get onDataUsageUpdated => _dataUsageController.stream;
   Stream<VpnError> get onError => _errorController.stream;
 
-  // Current state
   VpnStatus _currentStatus = VpnStatus.disconnected;
   VpnStatus get currentStatus => _currentStatus;
 
-  // Subscription and server info
-  String? _currentSubscriptionUrl;
-  int? _currentServerIndex;
+  String? _currentConfig;
   String? _currentServerName;
 
-  /// Initialize the VPN engine
-  /// Should be called before using any other methods
+  /// Initialize VPN
   Future<bool> initialize() async {
     try {
-      // TODO: Initialize flutter_vpnengine plugin
-      // await VPNclientEngine.initialize();
-      
-      // Set up event listeners for the plugin
-      _setupEventListeners();
-      
+      if (_isWindows) {
+        // Setup Windows MethodChannel status listener
+        _windowsChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onStatusChanged') {
+            final status = _parseWindowsStatus(call.arguments as String);
+            _updateStatus(status);
+          }
+          return null;
+        });
+        
+        // Setup data usage channel
+        _windowsDataChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onDataUsageUpdated') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            _updateDataUsage(DataUsage(
+              bytesReceived: args['bytesReceived'] as int? ?? 0,
+              bytesSent: args['bytesSent'] as int? ?? 0,
+            ));
+          }
+          return null;
+        });
+        final result = await _windowsChannel.invokeMethod<bool>('initialize');
+        print('VPN SERVICE: Windows initialized');
+        return result ?? false;
+      } else {
+        // Use flutter_vpnengine for mobile
+        VpnclientEngineFlutter.instance.setStatusCallback((status) {
+          _updateStatus(_mapStatus(status));
+        });
+        await VpnclientEngineFlutter.instance.initialize();
+      }
+      print('VPN SERVICE: Initialized');
       return true;
     } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.unknown,
-        message: 'Failed to initialize VPN engine',
-        details: e.toString(),
-      ));
+      print('VPN SERVICE: Init error: $e');
       return false;
     }
   }
 
-  /// Set up event listeners from the plugin
-  void _setupEventListeners() {
-    // TODO: Implement actual plugin event listeners
-    // This will be replaced with actual plugin callbacks:
-    //
-    // VPNclientEngine.onConnectionStatusChanged((status) {
-    //   _updateStatus(_mapPluginStatus(status));
-    // });
-    //
-    // VPNclientEngine.onDataUsageUpdated((sent, received) {
-    //   _dataUsageController.add(DataUsage(
-    //     bytesSent: sent,
-    //     bytesReceived: received,
-    //   ));
-    // });
-    //
-    // VPNclientEngine.onError((error) {
-    //   _errorController.add(_mapPluginError(error));
-    // });
-    //
-    // VPNclientEngine.onKillSwitchTriggered(() {
-    //   _updateStatus(VpnStatus.disconnected);
-    // });
-  }
-
-  /// Add a subscription URL
-  /// Returns the subscription index
-  Future<int?> addSubscription(String url) async {
-    try {
-      // TODO: Implement with actual plugin
-      // final index = await VPNclientEngine.addSubscription(url);
-      // return index;
-      
-      _currentSubscriptionUrl = url;
-      return 0; // Placeholder
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to add subscription',
-        details: e.toString(),
-      ));
-      return null;
+  VpnStatus _parseWindowsStatus(String status) {
+    switch (status) {
+      case 'connecting': return VpnStatus.connecting;
+      case 'connected': return VpnStatus.connected;
+      case 'disconnecting': return VpnStatus.disconnecting;
+      case 'error': return VpnStatus.error;
+      default: return VpnStatus.disconnected;
     }
   }
 
-  /// Remove a subscription
-  Future<bool> removeSubscription(int index) async {
-    try {
-      // TODO: Implement with actual plugin
-      // return await VPNclientEngine.removeSubscription(index);
-      return true;
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to remove subscription',
-        details: e.toString(),
-      ));
-      return false;
+  VpnStatus _mapStatus(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.disconnected:
+        return VpnStatus.disconnected;
+      case ConnectionStatus.connecting:
+        return VpnStatus.connecting;
+      case ConnectionStatus.connected:
+        return VpnStatus.connected;
+      case ConnectionStatus.error:
+        return VpnStatus.error;
+      default:
+        return VpnStatus.disconnected;
     }
   }
 
-  /// Get list of servers from a subscription
-  Future<List<Map<String, dynamic>>> getServerList(int subscriptionIndex) async {
-    try {
-      // TODO: Implement with actual plugin
-      // return await VPNclientEngine.getServerList(subscriptionIndex);
-      return []; // Placeholder
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to get server list',
-        details: e.toString(),
-      ));
-      return [];
-    }
-  }
-
-  /// Connect to a specific server
-  Future<bool> connect({
-    int subscriptionIndex = 0,
-    required int serverIndex,
-    String? serverName,
-  }) async {
+  /// Connect using VLESS/Xray config
+  Future<bool> connect({required String config, String? serverName}) async {
+    print('VPN SERVICE: connect() called, isWindows=$_isWindows');
     try {
       _updateStatus(VpnStatus.connecting);
-      _currentServerIndex = serverIndex;
+      _currentConfig = config;
       _currentServerName = serverName;
 
-      // TODO: Implement with actual plugin
-      // final result = await VPNclientEngine.connect(
-      //   subscriptionIndex: subscriptionIndex,
-      //   serverIndex: serverIndex,
-      // );
+      if (_isWindows) {
+        print('VPN SERVICE: Windows detected, checking xray...');
+        // Download xray.exe if not exists
+        final xrayReady = await _ensureXrayExists();
+        if (!xrayReady) {
+          _errorController.add(VpnError(
+            type: 'xray_not_found',
+            message: 'Failed to download Xray core',
+          ));
+          _updateStatus(VpnStatus.error);
+          return false;
+        }
+        print('VPN SERVICE: Calling Windows connect...');
+        print('VPN SERVICE: Config length: ${config.length}, starts with: ${config.substring(0, config.length > 20 ? 20 : config.length)}');
+        final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
+        print('VPN SERVICE: Windows connect returned: $result');
+        return result ?? false;
+      }
+
+      final result = await VpnclientEngineFlutter.client.connect(EngineType.libxray, config);
       
-      // Simulate connection for testing
-      await Future.delayed(const Duration(seconds: 2));
-      
-      _updateStatus(VpnStatus.connected);
-      
-      // Start simulating data usage updates
-      _startDataUsageSimulation();
-      
-      return true;
+      if (!result) {
+        _updateStatus(VpnStatus.error);
+      }
+      return result;
     } catch (e) {
       _updateStatus(VpnStatus.error);
-      _errorController.add(VpnError(
-        type: VpnErrorType.unknown,
-        message: 'Failed to connect',
-        details: e.toString(),
-      ));
+      if (!_errorController.isClosed) {
+        _errorController.add(VpnError(
+          type: 'connection_error',
+          message: 'Failed to connect',
+          details: e.toString(),
+        ));
+      }
       return false;
     }
   }
@@ -239,136 +186,209 @@ class VpnService {
     try {
       _updateStatus(VpnStatus.disconnecting);
       
-      // TODO: Implement with actual plugin
-      // await VPNclientEngine.disconnect();
+      if (_isWindows) {
+        final result = await _windowsChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
+      }
       
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      _updateStatus(VpnStatus.disconnected);
-      _stopDataUsageSimulation();
-      
+      await VpnclientEngineFlutter.client.disconnect();
       return true;
     } catch (e) {
       _updateStatus(VpnStatus.error);
-      _errorController.add(VpnError(
-        type: VpnErrorType.unknown,
-        message: 'Failed to disconnect',
-        details: e.toString(),
-      ));
+      if (!_errorController.isClosed) {
+        _errorController.add(VpnError(
+          type: 'disconnect_error',
+          message: 'Failed to disconnect',
+          details: e.toString(),
+        ));
+      }
       return false;
     }
   }
 
-  /// Toggle connection (connect if disconnected, disconnect if connected)
-  Future<bool> toggleConnection({
-    int subscriptionIndex = 0,
-    int? serverIndex,
-    String? serverName,
-  }) async {
+  /// Toggle connection
+  Future<bool> toggleConnection({String? config, String? serverName}) async {
     if (_currentStatus == VpnStatus.connected || _currentStatus == VpnStatus.connecting) {
       return disconnect();
     } else {
-      if (serverIndex == null) {
-        _errorController.add(VpnError(
-          type: VpnErrorType.configurationError,
-          message: 'No server selected',
-        ));
+      if (config == null) {
+        if (!_errorController.isClosed) {
+          _errorController.add(VpnError(
+            type: 'config_error',
+            message: 'No config provided',
+          ));
+        }
         return false;
       }
-      return connect(
-        subscriptionIndex: subscriptionIndex,
-        serverIndex: serverIndex,
-        serverName: serverName,
-      );
+      return connect(config: config, serverName: serverName);
     }
   }
 
-  /// Enable/disable kill switch
-  Future<bool> setKillSwitch(bool enabled) async {
+  /// Ensure xray.exe exists on Windows
+  Future<bool> _ensureXrayExists() async {
+    print('VPN SERVICE: _ensureXrayExists() started');
     try {
-      // TODO: Implement with actual plugin
-      // await VPNclientEngine.setKillSwitch(enabled);
-      return true;
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to set kill switch',
-        details: e.toString(),
-      ));
-      return false;
-    }
-  }
-
-  /// Set auto-connect
-  Future<bool> setAutoConnect(bool enabled) async {
-    try {
-      // TODO: Implement with actual plugin
-      // await VPNclientEngine.setAutoConnect(enabled);
-      return true;
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to set auto-connect',
-        details: e.toString(),
-      ));
-      return false;
-    }
-  }
-
-  /// Configure routing rules
-  Future<bool> setRoutingRules(List<Map<String, dynamic>> rules) async {
-    try {
-      // TODO: Implement with actual plugin
-      // await VPNclientEngine.setRoutingRules(rules);
-      return true;
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to set routing rules',
-        details: e.toString(),
-      ));
-      return false;
-    }
-  }
-
-  /// Refresh subscription
-  Future<bool> refreshSubscription(int index) async {
-    try {
-      // TODO: Implement with actual plugin
-      // return await VPNclientEngine.refreshSubscription(index);
-      return true;
-    } catch (e) {
-      _errorController.add(VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to refresh subscription',
-        details: e.toString(),
-      ));
-      return false;
-    }
-  }
-
-  /// Check if device has admin/root privileges (for Windows/Linux)
-  Future<bool> checkAdminPrivileges() async {
-    try {
-      if (Platform.isWindows) {
-        // Check Windows admin privileges
-        // final result = await _channel.invokeMethod('checkAdmin');
-        // return result ?? false;
+      // Check if xray exists via native code
+      print('VPN SERVICE: Calling checkAndDownloadXray...');
+      final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
+      print('VPN SERVICE: checkAndDownloadXray returned: $result');
+      if (result == true) {
+        print('VPN SERVICE: Xray already exists');
+        return true;
       }
-      return true;
+      
+      // Xray not found, copy from assets
+      print('VPN SERVICE: Xray not found, copying from assets...');
+      return await _copyXrayFromAssets();
+    } catch (e, stackTrace) {
+      print('VPN SERVICE: Xray check error: $e');
+      print('VPN SERVICE: Stack trace: $stackTrace');
+      return false;
+    }
+  }
+  
+  /// Download Xray for Windows
+  Future<bool> _downloadXray() async {
+    try {
+      // Xray Windows download URL (latest release)
+      const xrayUrl = 'https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip';
+      
+      print('VPN SERVICE: Downloading from $xrayUrl');
+      final response = await http.get(Uri.parse(xrayUrl));
+      
+      if (response.statusCode != 200) {
+        print('VPN SERVICE: Download failed: ${response.statusCode}');
+        return false;
+      }
+      
+      // Get AppData path
+      final appData = Platform.environment['LOCALAPPDATA'];
+      final xrayDir = Directory('$appData\\VoyfyVPN');
+      
+      if (!await xrayDir.exists()) {
+        await xrayDir.create(recursive: true);
+      }
+      
+      // Save zip file
+      final zipPath = '${xrayDir.path}\\xray.zip';
+      await File(zipPath).writeAsBytes(response.bodyBytes);
+      print('VPN SERVICE: Saved to $zipPath');
+      
+      // Extract zip file
+      final bytes = await File(zipPath).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      
+      // Find and extract xray.exe
+      for (final file in archive) {
+        if (file.name.toLowerCase() == 'xray.exe') {
+          final xrayPath = '${xrayDir.path}\\xray.exe';
+          await File(xrayPath).writeAsBytes(file.content as List<int>);
+          print('VPN SERVICE: Extracted xray.exe to $xrayPath');
+          
+          // Delete zip file
+          await File(zipPath).delete();
+          return true;
+        }
+      }
+      
+      print('VPN SERVICE: xray.exe not found in archive');
+      return false;
     } catch (e) {
+      print('VPN SERVICE: Download error: $e');
       return false;
     }
   }
 
-  /// Request admin privileges (Windows)
-  Future<bool> requestAdminPrivileges() async {
+  /// Copy Xray from assets to app directory
+  Future<bool> _copyXrayFromAssets() async {
     try {
-      // final result = await _channel.invokeMethod('requestAdmin');
-      // return result ?? false;
-      return true;
-    } catch (e) {
+      final appData = Platform.environment['LOCALAPPDATA'];
+      final xrayDir = Directory('$appData\\VoyfyVPN');
+      
+      print('VPN SERVICE: Copying to $xrayDir');
+      
+      if (!await xrayDir.exists()) {
+        print('VPN SERVICE: Creating directory $xrayDir');
+        await xrayDir.create(recursive: true);
+      }
+      
+      // Files to copy from assets
+      final files = ['xray.exe', 'geoip.dat', 'geosite.dat', 'wintun.dll'];
+      
+      for (final file in files) {
+        try {
+          print('VPN SERVICE: Loading $file from assets...');
+          final byteData = await rootBundle.load('assets/xray/$file');
+          print('VPN SERVICE: Loaded $file, size: ${byteData.lengthInBytes} bytes');
+          final bytes = byteData.buffer.asUint8List();
+          final filePath = '${xrayDir.path}\\$file';
+          await File(filePath).writeAsBytes(bytes);
+          print('VPN SERVICE: Copied $file to $filePath');
+        } catch (e) {
+          print('VPN SERVICE: Failed to copy $file: $e');
+          // Continue with other files
+        }
+      }
+      
+      // Check if xray.exe exists
+      final xrayPath = '${xrayDir.path}\\xray.exe';
+      if (await File(xrayPath).exists()) {
+        print('VPN SERVICE: Xray ready at $xrayPath');
+        return true;
+      }
+      
+      print('VPN SERVICE: xray.exe not found after copy');
       return false;
+    } catch (e, stackTrace) {
+      print('VPN SERVICE: Copy from assets error: $e');
+      print('VPN SERVICE: Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  /// Ping server with config
+  Future<int> ping(String config, String url, {int timeout = 10}) async {
+    try {
+      if (_isWindows) {
+        final result = await _windowsChannel.invokeMethod<int>('ping', {
+          'config': config,
+          'url': url,
+          'timeout': timeout,
+        });
+        return result ?? -1;
+      }
+      return await VpnclientEngineFlutter.client.ping(EngineType.libxray, config, url, timeout: timeout);
+    } catch (e) {
+      print('VPN SERVICE: Ping error: $e');
+      return -1;
+    }
+  }
+
+  /// Test config
+  Future<bool> testConfig(String config) async {
+    try {
+      if (_isWindows) {
+        final result = await _windowsChannel.invokeMethod<bool>('testConfig', {'config': config});
+        return result ?? false;
+      }
+      return await VpnclientEngineFlutter.client.testConfig(EngineType.libxray, config);
+    } catch (e) {
+      print('VPN SERVICE: Test config error: $e');
+      return false;
+    }
+  }
+
+  /// Get connection status
+  Future<VpnStatus> getConnectionStatus() async {
+    try {
+      if (_isWindows) {
+        final result = await _windowsChannel.invokeMethod<String>('getStatus');
+        return _parseWindowsStatus(result ?? 'disconnected');
+      }
+      final status = await VpnclientEngineFlutter.client.getConnectionStatus();
+      return _mapStatus(status);
+    } catch (e) {
+      return VpnStatus.disconnected;
     }
   }
 
@@ -377,51 +397,32 @@ class VpnService {
     if (_currentStatus != VpnStatus.connected) return null;
     
     return {
-      'serverIndex': _currentServerIndex,
       'serverName': _currentServerName,
-      'subscriptionUrl': _currentSubscriptionUrl,
       'connectedSince': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(),
     };
   }
 
   /// Dispose resources
   void dispose() {
-    _statusController.close();
-    _dataUsageController.close();
-    _errorController.close();
-    _stopDataUsageSimulation();
+    if (_currentStatus == VpnStatus.connected) {
+      disconnect();
+    }
+    
+    if (!_statusController.isClosed) _statusController.close();
+    if (!_errorController.isClosed) _errorController.close();
   }
 
   // Private methods
   void _updateStatus(VpnStatus status) {
     _currentStatus = status;
-    _statusController.add(status);
+    if (!_statusController.isClosed) {
+      _statusController.add(status);
+    }
   }
-
-  Timer? _dataUsageTimer;
-  int _simulatedSent = 0;
-  int _simulatedReceived = 0;
-
-  void _startDataUsageSimulation() {
-    _dataUsageTimer?.cancel();
-    _simulatedSent = 0;
-    _simulatedReceived = 0;
-    
-    // Simulate data usage updates every 2 seconds
-    _dataUsageTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      // Simulate some data usage
-      _simulatedSent += (100 + DateTime.now().millisecond) * 1024; // Random KB
-      _simulatedReceived += (200 + DateTime.now().millisecond) * 1024;
-      
-      _dataUsageController.add(DataUsage(
-        bytesSent: _simulatedSent,
-        bytesReceived: _simulatedReceived,
-      ));
-    });
-  }
-
-  void _stopDataUsageSimulation() {
-    _dataUsageTimer?.cancel();
-    _dataUsageTimer = null;
+  
+  void _updateDataUsage(DataUsage usage) {
+    if (!_dataUsageController.isClosed) {
+      _dataUsageController.add(usage);
+    }
   }
 }

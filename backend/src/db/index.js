@@ -173,6 +173,9 @@ const initDatabase = async () => {
         premium BOOLEAN DEFAULT false,
         is_active BOOLEAN DEFAULT true,
         load_percentage INTEGER DEFAULT 0,
+        current_users INTEGER DEFAULT 0,
+        ping_ms INTEGER,
+        last_seen TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -236,6 +239,7 @@ const initDatabase = async () => {
       ADD COLUMN IF NOT EXISTS server_names JSONB,
       ADD COLUMN IF NOT EXISTS short_id VARCHAR(255),
       ADD COLUMN IF NOT EXISTS current_users INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS ping_ms INTEGER,
       ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP,
       ADD COLUMN IF NOT EXISTS provider VARCHAR(255)
     `);

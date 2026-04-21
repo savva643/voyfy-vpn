@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/api_config.dart';
 import 'home_screen.dart';
 import '../services/api_service.dart';
 
@@ -397,7 +398,7 @@ class _RegScreenState extends State<RegScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final uri = Uri.parse("http://localhost:4000/api/auth/register");
+      final uri = Uri.parse(ApiConfig.authRegister);
 
       final response = await http.post(
         uri,
@@ -422,6 +423,15 @@ class _RegScreenState extends State<RegScreen> {
         print('REGISTER SUCCESS: token=${tokens['accessToken']}');
         await ApiService.setTokens(tokens['accessToken'], tokens['refreshToken'] ?? '');
         print('TOKENS SAVED: access_token and refresh_token saved to prefs');
+        
+        // Save UUID and email for VPN
+        final prefs = await SharedPreferences.getInstance();
+        if (data?['uuid'] != null) {
+          await prefs.setString('user_uuid', data['uuid']);
+          print('UUID SAVED: ${data['uuid']}');
+        }
+        await prefs.setString('email', _emailController.text.trim());
+        print('EMAIL SAVED: ${_emailController.text.trim()}');
 
         if (mounted) {
           print('NAVIGATING TO HOMESCREEN...');

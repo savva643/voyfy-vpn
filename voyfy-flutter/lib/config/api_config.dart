@@ -17,4 +17,7 @@ class ApiConfig {
   static String get authValidate => '$baseUrl/api/auth/validate';
   static String get subscription => '$baseUrl/api/subscription';
   static String get userProfile => '$baseUrl/api/user/profile';
+  
+  // Subscription URL for VPN client (requires UUID)
+  static String subscriptionByUuid(String uuid) => '$baseUrl/api/subscription/$uuid';
 }

@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# VoyFy VPN Server Auto-Installer
-# XRay VLESS + XTLS-Reality
-
 set -e
 
 RED='\033[0;31m'
@@ -12,156 +9,118 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 PAIRING_CODE="${1:-}"
-API_ENDPOINT="${API_ENDPOINT:-}"
+API_ENDPOINT="${API_ENDPOINT:-https://vip.necsoura.ru}"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  VoyFy VPN Server Installer${NC}"
-echo -e "${BLUE}  XRay VLESS + XTLS-Reality${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
 if [[ $EUID -ne 0 ]]; then
-   echo -e "${RED}❌ Этот скрипт должен быть запущен от root${NC}"
+   echo -e "${RED}❌ Запустите от root${NC}"
    exit 1
 fi
 
-# Check pairing code
 if [[ -z "$PAIRING_CODE" ]]; then
     echo -e "${RED}❌ Не указан код привязки${NC}"
-    echo ""
-    echo -e "${YELLOW}📋 Использование:${NC}"
     echo "  curl -fsSL https://vip.necsoura.ru/vpn-server/install.sh | bash -s -- \"VOYFY-XXXXXX\""
-    echo ""
-    echo -e "${YELLOW}💡 Получите код в админ-панели:${NC}"
-    echo "  https://vip.necsoura.ru/admin"
     exit 1
 fi
 
-# Interactive input for API endpoint if not provided via env
-if [[ -z "$API_ENDPOINT" ]]; then
-    echo -e "${YELLOW}📝 Введите API endpoint (например: https://api.voyfy.com):${NC}"
-    read -r API_ENDPOINT
-fi
-
-if [[ -z "$API_ENDPOINT" ]]; then
-    echo -e "${RED}❌ Не указан API endpoint${NC}"
-    exit 1
-fi
-
-# Verify pairing code and get server details
-echo -e "${YELLOW}🔐 Проверка кода привязки...${NC}"
-VERIFY_RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/verify-code" \
+# Verify pairing code
+echo -e "${YELLOW}🔐 Проверка кода...${NC}"
+VERIFY=$(curl -s -X POST "$API_ENDPOINT/api/servers/verify-code" \
     -H "Content-Type: application/json" \
-    -d "{\"code\": \"$PAIRING_CODE\"}" 2>/dev/null)
+    -d "{\"code\": \"$PAIRING_CODE\"}")
 
-if ! echo "$VERIFY_RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
-    echo -e "${RED}❌ Неверный или истекший код привязки${NC}"
-    echo "   $(echo "$VERIFY_RESPONSE" | jq -r '.message // "Unknown error"' 2>/dev/null)"
+if ! echo "$VERIFY" | jq -e '.success' >/dev/null 2>&1; then
+    echo -e "${RED}❌ Неверный код${NC}"
     exit 1
 fi
 
-SERVER_NAME=$(echo "$VERIFY_RESPONSE" | jq -r '.serverName')
-SERVER_COUNTRY=$(echo "$VERIFY_RESPONSE" | jq -r '.country')
-SERVER_COUNTRY_CODE=$(echo "$VERIFY_RESPONSE" | jq -r '.countryCode')
-SERVER_PREMIUM=$(echo "$VERIFY_RESPONSE" | jq -r '.premium')
+SERVER_NAME=$(echo "$VERIFY" | jq -r '.serverName')
+SERVER_COUNTRY=$(echo "$VERIFY" | jq -r '.country')
+SERVER_COUNTRY_CODE=$(echo "$VERIFY" | jq -r '.countryCode')
+SERVER_PREMIUM=$(echo "$VERIFY" | jq -r '.premium')
 
-echo -e "${GREEN}✅ Код верифицирован${NC}"
-echo -e "${YELLOW}📋 Конфигурация:${NC}"
-echo "  Code: $PAIRING_CODE"
-echo "  API: $API_ENDPOINT"
-echo "  Server: $SERVER_NAME ($SERVER_COUNTRY)"
-echo "  Type: $([[ "$SERVER_PREMIUM" == "true" ]] && echo "Premium" || echo "Free")"
-echo ""
+echo -e "${GREEN}✅ Код верифицирован: $SERVER_NAME${NC}"
 
-# Установка зависимостей
-echo -e "${YELLOW}📦 Установка зависимостей...${NC}"
+# Установка
 apt-get update -qq
-apt-get install -y -qq curl wget jq uuid-runtime qrencode ufw
+apt-get install -y -qq curl wget jq uuid-runtime ufw bc openssl
 
 # Фаервол
-echo -e "${YELLOW}🔓 Настройка фаервола...${NC}"
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp
-ufw allow 443/tcp
-ufw --force enable
+ufw default deny incoming >/dev/null 2>&1
+ufw default allow outgoing >/dev/null 2>&1
+ufw allow 22/tcp >/dev/null 2>&1
+ufw allow 8444/tcp >/dev/null 2>&1
+ufw --force enable >/dev/null 2>&1
 
-# Установка XRay
+# XRay
 echo -e "${YELLOW}🔧 Установка XRay...${NC}"
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install >/dev/null 2>&1
 
-# Генерация ключей
-echo -e "${YELLOW}🔐 Генерация Reality ключей...${NC}"
-KEYS=$(/usr/local/bin/xray x25519)
-PRIVATE_KEY=$(echo "$KEYS" | grep "Private key:" | awk '{print $3}')
-PUBLIC_KEY=$(echo "$KEYS" | grep "Public key:" | awk '{print $3}')
+# Генерация ключей (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+echo -e "${YELLOW}🔐 Генерация ключей...${NC}"
+KEYS=$(/usr/local/bin/xray x25519 2>/dev/null)
+
+# Парсим ключи Xray v26.3.27
+PRIVATE_KEY=$(echo "$KEYS" | grep "PrivateKey:" | sed 's/PrivateKey: //' | tr -d ' ')
+PUBLIC_KEY=$(echo "$KEYS" | grep "Password (PublicKey):" | sed 's/Password (PublicKey): //' | tr -d ' ')
 SHORT_ID=$(openssl rand -hex 4)
-SERVER_IP=$(curl -s ifconfig.me)
+
+# IP адрес с fallback
+SERVER_IP=$(curl -s --max-time 10 ifconfig.me)
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP=$(curl -s --max-time 10 icanhazip.com)
+fi
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+fi
+
+if [ -z "$SERVER_IP" ] || [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
+    echo -e "${RED}❌ Ошибка получения IP или ключей${NC}"
+    exit 1
+fi
+
+echo "  IP: $SERVER_IP"
+echo "  Keys: OK"
 
 # Конфигурация XRay
-echo -e "${YELLOW}⚙️  Создание конфигурации...${NC}"
 mkdir -p /usr/local/etc/xray /var/log/xray
-
-cat > /usr/local/etc/xray/config.json <<EOF
+cat > /usr/local/etc/xray/config.json <<XRAYEOF
 {
-  "log": {
-    "loglevel": "warning",
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log"
-  },
-  "inbounds": [
-    {
-      "port": 443,
-      "protocol": "vless",
-      "settings": {
-        "clients": [],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "reality",
-        "realitySettings": {
-          "show": false,
-          "dest": "www.google.com:443",
-          "xver": 0,
-          "serverNames": ["www.google.com", "www.youtube.com"],
-          "privateKey": "$PRIVATE_KEY",
-          "shortIds": ["", "$SHORT_ID"]
-        }
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls", "quic"]
+  "log": {"loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log"},
+  "inbounds": [{
+    "port": 8444, "protocol": "vless",
+    "settings": {"clients": [], "decryption": "none"},
+    "streamSettings": {
+      "network": "tcp", "security": "reality",
+      "realitySettings": {
+        "show": false, "dest": "${SERVER_NAME:-vip.necsoura.ru}:443", "xver": 0,
+        "serverNames": ["${SERVER_NAME:-vip.necsoura.ru}"],
+        "privateKey": "$PRIVATE_KEY", "shortIds": ["", "$SHORT_ID"]
       }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "freedom",
-      "tag": "direct"
     },
-    {
-      "protocol": "blackhole",
-      "tag": "block"
-    }
+    "sniffing": {"enabled": true, "destOverride": ["http", "tls", "quic"]}
+  }],
+  "outbounds": [
+    {"protocol": "freedom", "tag": "direct"},
+    {"protocol": "blackhole", "tag": "block"}
   ]
 }
-EOF
+XRAYEOF
 
-# Системный сервис XRay
+# Сервис XRay
 cat > /etc/systemd/system/xray.service <<EOF
 [Unit]
 Description=XRay Service
-After=network.target nss-lookup.target
+After=network.target
 
 [Service]
 User=root
-NoNewPrivileges=true
 ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
 Restart=on-failure
-RestartPreventExitStatus=23
-LimitNPROC=10000
-LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
@@ -171,114 +130,58 @@ systemctl daemon-reload
 systemctl enable xray
 systemctl start xray
 
-# Сохранение конфигурации
-mkdir -p /opt/voyfy
-cat > /opt/voyfy/config.json <<EOF
-{
-  "server": {
-    "ip": "$SERVER_IP",
-    "port": 443,
-    "protocol": "vless"
-  },
-  "reality": {
-    "privateKey": "$PRIVATE_KEY",
-    "publicKey": "$PUBLIC_KEY",
-    "shortId": "$SHORT_ID"
-  },
-  "api": {
-    "endpoint": "$API_ENDPOINT"
-  }
-}
-EOF
+# Регистрация
+echo -e "${YELLOW}🌐 Регистрация в API...${NC}"
 
-# Регистрация в API с кодом привязки
-echo -e "${YELLOW}🌐 Регистрация сервера в API...${NC}"
 RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/register" \
     -H "Content-Type: application/json" \
     -d "{
-        \"pairingCode\": \"$PAIRING_CODE\",
-        \"name\": \"$SERVER_NAME\",
-        \"country\": \"$SERVER_COUNTRY\",
-        \"countryCode\": \"$SERVER_COUNTRY_CODE\",
-        \"host\": \"$SERVER_IP\",
-        \"port\": 443,
-        \"publicKey\": \"$PUBLIC_KEY\",
-        \"serverNames\": [\"www.google.com\", \"www.youtube.com\"],
-        \"shortId\": \"$SHORT_ID\",
-        \"premium\": $SERVER_PREMIUM
-    }" 2>/dev/null)
+      \"pairingCode\": \"$PAIRING_CODE\",
+      \"name\": \"$SERVER_NAME\",
+      \"country\": \"$SERVER_COUNTRY\",
+      \"countryCode\": \"$SERVER_COUNTRY_CODE\",
+      \"host\": \"$SERVER_IP\",
+      \"port\": 8444,
+      \"publicKey\": \"$PUBLIC_KEY\",
+      \"serverNames\": [\"www.google.com\", \"www.youtube.com\"],
+      \"shortId\": \"$SHORT_ID\",
+      \"premium\": $SERVER_PREMIUM
+    }")
 
 if echo "$RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
     SERVER_ID=$(echo "$RESPONSE" | jq -r '.serverId')
     API_KEY=$(echo "$RESPONSE" | jq -r '.apiKey')
     echo -e "${GREEN}✅ Сервер зарегистрирован: $SERVER_ID${NC}"
     
-    # Обновляем конфиг с serverId и apiKey
-    cat > /opt/voyfy/config.json <<EOF
-{
-  "serverId": "$SERVER_ID",
-  "apiKey": "$API_KEY",
-  "server": {
-    "ip": "$SERVER_IP",
-    "port": 443,
-    "protocol": "vless"
-  },
-  "reality": {
-    "privateKey": "$PRIVATE_KEY",
-    "publicKey": "$PUBLIC_KEY",
-    "shortId": "$SHORT_ID"
-  },
-  "api": {
-    "endpoint": "$API_ENDPOINT"
-  }
-}
-EOF
+    # Конфиг и heartbeat
+    mkdir -p /opt/voyfy
+    echo "{\"serverId\": \"$SERVER_ID\", \"apiKey\": \"$API_KEY\", \"api\": {\"endpoint\": \"$API_ENDPOINT\"}}" > /opt/voyfy/config.json
     
-    # Установка heartbeat
-    curl -fsSL "$API_ENDPOINT/vpn-server/heartbeat.sh" -o /opt/voyfy/heartbeat.sh
-    chmod +x /opt/voyfy/heartbeat.sh
+    # Скачать heartbeat если доступен
+    curl -fsSL "$API_ENDPOINT/vpn-server/heartbeat.sh" -o /opt/voyfy/heartbeat.sh 2>/dev/null && chmod +x /opt/voyfy/heartbeat.sh
     
-    # Systemd сервис для heartbeat
+    # Сервис heartbeat
     cat > /etc/systemd/system/voyfy-heartbeat.service <<EOF
 [Unit]
 Description=VoyFy Heartbeat
-After=network.target xray.service
+After=network.target
 
 [Service]
 Type=simple
 ExecStart=/opt/voyfy/heartbeat.sh
 Restart=always
-RestartSec=10
 User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    systemctl daemon-reload
-    systemctl enable voyfy-heartbeat
-    systemctl start voyfy-heartbeat
     
+    systemctl daemon-reload
+    systemctl enable voyfy-heartbeat 2>/dev/null || true
+    systemctl start voyfy-heartbeat 2>/dev/null || true
+    
+    echo -e "${GREEN}✅ VPN Сервер готов!${NC}"
 else
-    echo -e "${RED}❌ Ошибка активации:${NC}"
-    echo "$RESPONSE" | jq -r '.message // "Unknown error"' 2>/dev/null || echo "$RESPONSE"
+    echo -e "${RED}❌ Ошибка регистрации: $(echo "$RESPONSE" | jq -r '.message')${NC}"
     exit 1
 fi
-
-# Вывод информации
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  ✅ VPN Сервер готов!${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo -e "${BLUE}📊 Информация:${NC}"
-echo "  IP: $SERVER_IP"
-echo "  Port: 443"
-echo "  Public Key: $PUBLIC_KEY"
-echo ""
-echo -e "${YELLOW}📝 Управление:${NC}"
-echo "  systemctl status xray        - статус VPN"
-echo "  systemctl status voyfy-heartbeat - статус мониторинга"
-echo "  cat /var/log/xray/error.log  - логи"
-echo ""
-echo -e "${GREEN}🚀 Сервер добавлен в пул и доступен пользователям!${NC}"

@@ -66,12 +66,13 @@ app.post('/api/auth/oauth/login', authController.externalLogin);
 // ==========================================
 // Subscription Routes
 // ==========================================
+// First: mount the subscription routes (MUST be before /api/subscription/:uuid)
+app.use('/api/subscriptions', subscriptionRoutes);
+
+// Then: individual subscription endpoints
 app.get('/api/subscription', authenticate, subscriptionController.getSubscription);
 app.get('/api/subscription/json', authenticate, subscriptionController.getSubscriptionJson);
 app.get('/api/subscription/:uuid', subscriptionController.getSubscriptionByUuid);
-
-// Subscription Plans Routes
-app.use('/api/subscriptions', subscriptionRoutes);
 
 // ==========================================
 // Server Routes (Public)

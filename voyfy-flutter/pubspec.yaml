@@ -33,10 +33,11 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.6
-  flutter_vpnengine: ^1.0.0
+  flutter_vpnengine: ^1.0.5+11
   easy_localization: ^3.0.7
   shared_preferences: ^2.2.3
   http: ^1.2.1
+  archive: ^3.4.10
   flutter_launcher_icons: ^0.13.1
   simple_gradient_text: ^1.4.0
   cached_network_image: ^3.3.1
@@ -89,6 +90,10 @@ flutter:
     - assets/images/
     - server/server.json
     - assets/translations/
+    - assets/xray/xray.exe
+    - assets/xray/geoip.dat
+    - assets/xray/geosite.dat
+    - assets/xray/wintun.dll
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

@@ -7,13 +7,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import '../config/api_config.dart';
 
 import '../providers/theme_provider.dart';
+import '../providers/vpn_provider.dart';
+import '../services/vpn_service.dart';
+import '../models/vpn_server.dart';
 import 'home/home_content.dart';
 import 'home/premium_content.dart';
 import 'home/settings_content.dart';
 import '../widgets/navigation_widgets.dart';
+import 'login_screen.dart';
+import 'server_location.dart';
+import 'change_language.dart';
+import 'account_sccreen.dart';
+import 'aboutsub_sccreen.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_of_service_screen.dart';
 
 const kBgColor = Color(0xFF0038FF);
 const kBgColorLight = Color(0xFF4B6FFF);
@@ -28,7 +39,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  AssetImage am = const AssetImage('assets/images/usa.jpeg');
+  String flagUrl = 'https://flagcdn.com/w80/us.png';
   String nameserver = "usa".tr().toString();
   int idserv = 1;
   bool isfree = false;
@@ -39,18 +50,80 @@ class _HomeScreenState extends State<HomeScreen> {
   String _pingResult = '0';
   double downloadSpeed = 0;
   double uploadSpeed = 0;
+  int _bytesReceived = 0;
+  int _bytesSent = 0;
   int _currentIndex = 0;
+
+  String? _userUuid;
+  String? _subscriptionUrl;
+  bool _isVpnInitialized = false;
+  Map<String, dynamic>? _selectedServer;
 
   @override
   void initState() {
     super.initState();
     _loadServer();
+    _initializeVpn();
+  }
+
+  Future<void> _initializeVpn() async {
+    final prefs = await SharedPreferences.getInstance();
+    _userUuid = prefs.getString('user_uuid');
+    
+    print('VPN INIT: user_uuid from prefs = $_userUuid');
+    
+    if (_userUuid != null) {
+      print('VPN INIT: UUID found, initializing VPN engine...');
+      final vpnService = VpnService.instance;
+      
+      try {
+        // Initialize VPN engine
+        final initResult = await vpnService.initialize();
+        print('VPN INIT: initialize() returned $initResult');
+        
+        if (!initResult) {
+          print('VPN INIT FAILED: initialize() returned false');
+          return;
+        }
+        
+        // Store subscription URL for later use
+        _subscriptionUrl = ApiConfig.subscriptionByUuid(_userUuid!);
+        print('VPN INIT: Subscription URL ready: $_subscriptionUrl');
+        
+        // Listen to VPN status changes
+        vpnService.onStatusChanged.listen((status) {
+          setState(() {
+            _isConnected = status == VpnStatus.connected;
+            if (status == VpnStatus.disconnected) {
+              stopTimer();
+            } else if (status == VpnStatus.connected) {
+              startTimer();
+            }
+          });
+        });
+        
+        // Listen to data usage updates
+        vpnService.onDataUsageUpdated.listen((usage) {
+          setState(() {
+            _bytesReceived = usage.bytesReceived;
+            _bytesSent = usage.bytesSent;
+          });
+        });
+        
+        setState(() => _isVpnInitialized = true);
+        print('VPN INIT: SUCCESS - _isVpnInitialized = true');
+      } catch (e, stack) {
+        print('VPN INIT ERROR: $e');
+        print('VPN INIT STACK: $stack');
+      }
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _pingTimer?.cancel();
+    VpnService.instance.dispose();
     super.dispose();
   }
 
@@ -103,14 +176,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return match?.group(1) ?? '0';
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)}GB';
+  }
+  
   Future<void> checkSpeed() async {
+    // Speed test not implemented - now shows data usage instead
     setState(() {
-      downloadSpeed = 45.2;
-      uploadSpeed = 32.8;
+      // Just refresh the UI
     });
   }
 
   Future<void> changeServer(int serverId) async {
+    final vpnProvider = context.read<VpnProvider>();
+    
     try {
       final uri = Uri.parse(ApiConfig.servers);
       final res = await http.get(uri);
@@ -119,33 +201,54 @@ class _HomeScreenState extends State<HomeScreen> {
         final list = decoded['success'] != null && decoded['data'] != null
             ? decoded['data']['servers'] as List<dynamic>?
             : decoded['servers'] as List<dynamic>? ?? [];
-        final server = list.firstWhere(
+        final server = list?.firstWhere(
               (s) => s['serverId'] == serverId,
           orElse: () => null,
         );
         if (server != null) {
           setState(() {
             idserv = serverId;
-            // Use online flag images from flagcdn.com
-            am = AssetImage('assets/images/placeholder.png'); // Fallback
+            final countryCode = server["countryCode"]?.toString().toLowerCase() ?? 'us';
+            flagUrl = 'https://flagcdn.com/w80/$countryCode.png';
             nameserver = server["name"].toString();
             isfree = server["isFree"] == true;
           });
+          
+          // Also update VpnProvider with selected server
+          final vpnServer = VpnServer.fromJson(server);
+          vpnProvider.selectServer(vpnServer);
+          
+          // Save to prefs
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('idserv', serverId);
           return;
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      print('changeServer API error: $e');
+    }
 
+    // Fallback to local server.json
     try {
       final String response = await rootBundle.loadString('server/server.json');
       final tagsJson = jsonDecode(response)[serverId - 1];
       setState(() {
         idserv = serverId;
-        am = AssetImage(tagsJson["src"]);
+        final countryCode = tagsJson["countryCode"]?.toString().toLowerCase() ?? 'us';
+        flagUrl = 'https://flagcdn.com/w80/$countryCode.png';
         nameserver = tagsJson["name"].toString().tr();
         isfree = tagsJson["isFree"];
       });
-    } catch (_) {}
+      
+      // Also update VpnProvider with selected server from local
+      final vpnServer = VpnServer.fromJson(tagsJson);
+      vpnProvider.selectServer(vpnServer);
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('idserv', serverId);
+    } catch (e) {
+      print('changeServer local error: $e');
+    }
   }
 
   String formatDuration(Duration d) {
@@ -153,13 +256,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${two(d.inHours)}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
 
-  void toggleConnection() {
-    if (_isConnected) {
-      stopTimer();
-    } else {
-      startTimer();
+  Future<void> toggleConnection() async {
+    if (!_isVpnInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('VPN not initialized. Please login first.')),
+      );
+      return;
     }
-    setState(() => _isConnected = !_isConnected);
+    
+    // Use VpnProvider which has proper server selection logic
+    final vpnProvider = context.read<VpnProvider>();
+    final result = await vpnProvider.toggleConnection();
+    
+    if (!result && mounted) {
+      final error = vpnProvider.lastError;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error?.message ?? 'Failed to connect to VPN')),
+      );
+    }
   }
 
   void navigateToScreen(Widget screen) {
@@ -306,18 +420,19 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return HomeContent(
           isDesktop: isDesktop,
-          am: am,
+          flagUrl: flagUrl,
           nameserver: nameserver,
           isfree: isfree,
           isConnected: _isConnected,
           duration: _duration,
           pingResult: _pingResult,
-          downloadSpeed: downloadSpeed,
-          uploadSpeed: uploadSpeed,
+          bytesReceived: _bytesReceived,
+          bytesSent: _bytesSent,
+          formatBytes: _formatBytes,
           formatDuration: formatDuration,
           onToggleConnection: toggleConnection,
           onCheckSpeed: checkSpeed,
-          onChangeServer: _openServerSelection, // Теперь передаем метод без параметров
+          onChangeServer: _openServerSelection,
         );
     }
   }

@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/api_config.dart';
 import '../models/vpn_server.dart';
 import '../services/vpn_service.dart';
 
@@ -129,7 +133,7 @@ class VpnProvider extends ChangeNotifier {
   Future<bool> connect() async {
     if (_selectedServer == null) {
       _lastError = VpnError(
-        type: VpnErrorType.configurationError,
+        type: 'config_error',
         message: 'No server selected',
       );
       notifyListeners();
@@ -139,8 +143,9 @@ class VpnProvider extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
+    print('VPN PROVIDER: selectedServer=${_selectedServer?.name}, vlessUrl=${_selectedServer?.vlessUrl?.substring(0, _selectedServer?.vlessUrl?.length.clamp(0, 30) ?? 0)}');
     final result = await _vpnService.connect(
-      serverIndex: _servers.indexOf(_selectedServer!),
+      config: _selectedServer!.vlessUrl ?? '',
       serverName: _selectedServer!.name,
     );
 
@@ -154,48 +159,67 @@ class VpnProvider extends ChangeNotifier {
 
   /// Toggle connection
   Future<bool> toggleConnection() async {
+    print('VPN PROVIDER: toggleConnection called, _selectedServer=$_selectedServer');
     if (_selectedServer == null) {
       _lastError = VpnError(
-        type: VpnErrorType.configurationError,
+        type: 'config_error',
         message: 'Please select a server first',
       );
       notifyListeners();
       return false;
     }
 
-    return await _vpnService.toggleConnection(
-      serverIndex: _servers.indexOf(_selectedServer!),
-      serverName: _selectedServer!.name,
-    );
-  }
-
-  /// Add subscription URL
-  Future<bool> addSubscription(String url) async {
+    // Fetch VLESS config from API
+    String? vlessUrl;
     try {
-      final result = await _vpnService.addSubscription(url);
-      return result != null;
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      
+      final uri = Uri.parse('${ApiConfig.baseUrl}/api/subscriptions/config/${_selectedServer!.id}');
+      print('VPN PROVIDER: Fetching config from $uri');
+      
+      final response = await http.get(
+        uri,
+        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+      );
+      
+      print('VPN PROVIDER: Config API response: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['config'] != null) {
+          vlessUrl = data['config']['vlessUrl'] as String?;
+          print('VPN PROVIDER: Got vlessUrl: ${vlessUrl?.substring(0, vlessUrl!.length.clamp(0, 50))}...');
+        }
+      }
     } catch (e) {
+      print('VPN PROVIDER: Error fetching config: $e');
+    }
+    
+    if (vlessUrl == null || vlessUrl.isEmpty) {
       _lastError = VpnError(
-        type: VpnErrorType.configurationError,
-        message: 'Failed to add subscription',
-        details: e.toString(),
+        type: 'config_error',
+        message: 'Failed to get VLESS configuration',
       );
       notifyListeners();
       return false;
     }
+
+    return await _vpnService.toggleConnection(
+      config: vlessUrl,
+      serverName: _selectedServer!.name,
+    );
   }
 
   /// Enable/disable kill switch
   Future<void> setKillSwitch(bool enabled) async {
     _killSwitchEnabled = enabled;
-    await _vpnService.setKillSwitch(enabled);
     notifyListeners();
   }
 
   /// Enable/disable auto-connect
   Future<void> setAutoConnect(bool enabled) async {
     _autoConnectEnabled = enabled;
-    await _vpnService.setAutoConnect(enabled);
     notifyListeners();
   }
 

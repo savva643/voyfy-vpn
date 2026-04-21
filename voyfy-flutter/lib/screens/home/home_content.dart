@@ -6,14 +6,15 @@ import '../../widgets/stat_card.dart';
 
 class HomeContent extends StatelessWidget {
   final bool isDesktop;
-  final AssetImage am;
+  final String flagUrl;
   final String nameserver;
   final bool isfree;
   final bool isConnected;
   final Duration duration;
   final String pingResult;
-  final double downloadSpeed;
-  final double uploadSpeed;
+  final int bytesReceived;
+  final int bytesSent;
+  final String Function(int) formatBytes;
   final String Function(Duration) formatDuration;
   final VoidCallback onToggleConnection;
   final VoidCallback onCheckSpeed;
@@ -22,14 +23,15 @@ class HomeContent extends StatelessWidget {
   const HomeContent({
     Key? key,
     required this.isDesktop,
-    required this.am,
+    required this.flagUrl,
     required this.nameserver,
     required this.isfree,
     required this.isConnected,
     required this.duration,
     required this.pingResult,
-    required this.downloadSpeed,
-    required this.uploadSpeed,
+    required this.bytesReceived,
+    required this.bytesSent,
+    required this.formatBytes,
     required this.formatDuration,
     required this.onToggleConnection,
     required this.onCheckSpeed,
@@ -78,7 +80,7 @@ class HomeContent extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   child: ServerCard(
-                    am: am,
+                    flagUrl: flagUrl,
                     nameserver: nameserver,
                     isfree: isfree,
                   ),
@@ -101,9 +103,9 @@ class HomeContent extends StatelessWidget {
                         child: StatCard(
                           icon: Icons.arrow_downward,
                           iconColor: const Color(0xff20C4F8),
-                          value: downloadSpeed.toStringAsFixed(1),
-                          unit: 'MB/s',
-                          label: 'download'.tr(),
+                          value: formatBytes(bytesReceived),
+                          unit: '',
+                          label: 'received'.tr(),
                           onTap: onCheckSpeed,
                         ),
                       ),
@@ -112,9 +114,9 @@ class HomeContent extends StatelessWidget {
                         child: StatCard(
                           icon: Icons.arrow_upward,
                           iconColor: const Color(0xff8220F9),
-                          value: uploadSpeed.toStringAsFixed(1),
-                          unit: 'MB/s',
-                          label: 'upload'.tr(),
+                          value: formatBytes(bytesSent),
+                          unit: '',
+                          label: 'sent'.tr(),
                           onTap: onCheckSpeed,
                         ),
                       ),
@@ -183,7 +185,7 @@ class HomeContent extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   ServerCard(
-                    am: am,
+                    flagUrl: flagUrl,
                     nameserver: nameserver,
                     isfree: isfree,
                   ),
@@ -206,18 +208,18 @@ class HomeContent extends StatelessWidget {
                         StatCard(
                           icon: Icons.arrow_downward,
                           iconColor: const Color(0xff20C4F8),
-                          value: downloadSpeed.toStringAsFixed(1),
-                          unit: 'MB/s',
-                          label: 'download'.tr(),
+                          value: formatBytes(bytesReceived),
+                          unit: '',
+                          label: 'received'.tr(),
                           onTap: onCheckSpeed,
                           isDesktop: true,
                         ),
                         StatCard(
                           icon: Icons.arrow_upward,
                           iconColor: const Color(0xff8220F9),
-                          value: uploadSpeed.toStringAsFixed(1),
-                          unit: 'MB/s',
-                          label: 'upload'.tr(),
+                          value: formatBytes(bytesSent),
+                          unit: '',
+                          label: 'sent'.tr(),
                           onTap: onCheckSpeed,
                           isDesktop: true,
                         ),

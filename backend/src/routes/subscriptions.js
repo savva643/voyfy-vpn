@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const logger = require('../utils/logger');
+const { authenticate } = require('../middleware/auth');
 
 // Get all locations
 router.get('/locations', async (req, res) => {
@@ -245,6 +246,84 @@ router.post('/user/:userId/subscribe', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to update subscription'
+    });
+  }
+});
+
+// Get VLESS config for specific server
+router.get('/config/:serverId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { serverId } = req.params;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+    
+    // Get user UUID
+    const userResult = await query(
+      'SELECT uuid FROM users WHERE id = $1 AND is_active = true',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    const userUuid = userResult.rows[0].uuid;
+    
+    // Get server details
+    const serverResult = await query(
+      'SELECT * FROM vpn_servers WHERE id = $1 AND is_active = true',
+      [serverId]
+    );
+    
+    if (serverResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Server not found'
+      });
+    }
+    
+    const server = serverResult.rows[0];
+    const config = require('../config');
+    
+    // Build VLESS URL
+    const params = new URLSearchParams({
+      security: 'reality',
+      encryption: 'none',
+      pbk: config.server.publicKey,
+      headerType: 'none',
+      fp: 'chrome',
+      type: 'tcp',
+      flow: 'xtls-rprx-vision',
+      sni: config.server.serverName,
+      sid: config.server.shortId,
+    });
+    
+    const vlessUrl = `vless://${userUuid}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(server.name)}`;
+    
+    res.json({
+      success: true,
+      config: {
+        vlessUrl,
+        serverId: server.id,
+        serverName: server.name,
+        host: server.host,
+        port: server.port || config.server.port
+      }
+    });
+  } catch (err) {
+    logger.error('Error generating config:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate config'
     });
   }
 });

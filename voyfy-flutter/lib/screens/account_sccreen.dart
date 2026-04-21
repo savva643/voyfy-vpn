@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/api_config.dart';
 import 'login_screen.dart';
 
 const kGradientStart = Color(0xFF0038FF);
@@ -49,7 +50,7 @@ class _AccountScreenState extends State<AccountScreen> {
       if (token == null) return;
 
       final response = await http.get(
-        Uri.parse('http://localhost:4000/api/user/subscription'),
+        Uri.parse(ApiConfig.userProfile),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

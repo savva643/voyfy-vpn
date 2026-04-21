@@ -22,32 +22,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Xray Core VPN Server
-  xray:
-    build:
-      context: ./xray
-      dockerfile: Dockerfile
-    container_name: voyfy-xray
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    environment:
-      - XRAY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}
-      - XRAY_PRIVATE_KEY=${XRAY_PRIVATE_KEY}
-      - XRAY_SERVER_NAME=${XRAY_SERVER_NAME:-www.microsoft.com}
-      - XRAY_SHORT_ID=${XRAY_SHORT_ID:-0123456789abcdef}
-      - XRAY_PORT=${XRAY_PORT:-8443}
-      - API_BASE_URL=http://api:4000
-    volumes:
-      - xray_logs:/var/log/xray
-    ports:
-      - "${XRAY_PORT:-8443}:${XRAY_PORT:-8443}"
-      - "${XRAY_API_PORT:-10085}:10085"
-    networks:
-      - voyfy-network
-    depends_on:
-      - api
-
   # API Backend
   api:
     build:
@@ -87,9 +61,9 @@ services:
     container_name: voyfy-nginx
     restart: unless-stopped
     volumes:
-      - ./nginx/nginx-http.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/nginx-https.conf:/etc/nginx/nginx-https.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl/fullchain.pem:/etc/nginx/ssl/cert.pem:ro
+      - ./nginx/ssl/privkey.pem:/etc/nginx/ssl/key.pem:ro
       - ../frontend:/usr/share/nginx/html:ro
       - ../vpn-server:/usr/share/nginx/vpn-server:ro
     ports:
@@ -102,7 +76,6 @@ services:
 
 volumes:
   postgres_data:
-  xray_logs:
 
 networks:
   voyfy-network:
