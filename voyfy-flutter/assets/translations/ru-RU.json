@@ -1,5 +1,7 @@
 {
   "connect": "Подключить",
+  "connecting": "Подключение...",
+  "disconnecting": "Отключение...",
   "languages": "Языки",
   "changelang": "Изменить язык",
   "aboutapp": "Об приложении",
@@ -14,6 +16,8 @@
   "mbpersecpl": " мб/с",
   "download": "Входящее",
   "upload": "Исходящее",
+  "received": "Получено",
+  "sent": "Отправлено",
   "usa": "США",
   "canada": "Канада",
   "search": "Поиск",

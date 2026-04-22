@@ -47,9 +47,9 @@ class VpnService {
   factory VpnService() => _instance;
   VpnService._internal();
 
-  final _statusController = StreamController<VpnStatus>.broadcast();
-  final _dataUsageController = StreamController<DataUsage>.broadcast();
-  final _errorController = StreamController<VpnError>.broadcast();
+  StreamController<VpnStatus> _statusController = StreamController<VpnStatus>.broadcast();
+  StreamController<DataUsage> _dataUsageController = StreamController<DataUsage>.broadcast();
+  StreamController<VpnError> _errorController = StreamController<VpnError>.broadcast();
 
   // Windows MethodChannels
   static const MethodChannel _windowsChannel = MethodChannel('com.voyfy.vpn/windows');
@@ -70,12 +70,27 @@ class VpnService {
 
   /// Initialize VPN
   Future<bool> initialize() async {
+    // Recreate controllers if they were closed
+    if (_statusController.isClosed) {
+      print('VPN SERVICE: Recreating status controller');
+      _statusController = StreamController<VpnStatus>.broadcast();
+    }
+    if (_dataUsageController.isClosed) {
+      _dataUsageController = StreamController<DataUsage>.broadcast();
+    }
+    if (_errorController.isClosed) {
+      _errorController = StreamController<VpnError>.broadcast();
+    }
+    
     try {
       if (_isWindows) {
         // Setup Windows MethodChannel status listener
         _windowsChannel.setMethodCallHandler((call) async {
+          print('VPN SERVICE: Method call received: ${call.method}, args: ${call.arguments}');
           if (call.method == 'onStatusChanged') {
-            final status = _parseWindowsStatus(call.arguments as String);
+            final statusStr = call.arguments as String;
+            print('VPN SERVICE: Status update from native: $statusStr');
+            final status = _parseWindowsStatus(statusStr);
             _updateStatus(status);
           }
           return null;
@@ -111,12 +126,20 @@ class VpnService {
   }
 
   VpnStatus _parseWindowsStatus(String status) {
+    // Ignore empty status - don't change state
+    if (status.isEmpty) {
+      print('VPN SERVICE: Ignoring empty status update');
+      return _currentStatus; // Keep current status
+    }
     switch (status) {
       case 'connecting': return VpnStatus.connecting;
       case 'connected': return VpnStatus.connected;
       case 'disconnecting': return VpnStatus.disconnecting;
+      case 'disconnected': return VpnStatus.disconnected;
       case 'error': return VpnStatus.error;
-      default: return VpnStatus.disconnected;
+      default: 
+        print('VPN SERVICE: Unknown status "$status", keeping current');
+        return _currentStatus; // Keep current status for unknown
     }
   }
 
@@ -349,10 +372,12 @@ class VpnService {
   /// Ping server with config
   Future<int> ping(String config, String url, {int timeout = 10}) async {
     try {
+      // Extract host from vless URL
+      String host = _extractHostFromConfig(config);
+      
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<int>('ping', {
-          'config': config,
-          'url': url,
+          'host': host,
           'timeout': timeout,
         });
         return result ?? -1;
@@ -362,6 +387,34 @@ class VpnService {
       print('VPN SERVICE: Ping error: $e');
       return -1;
     }
+  }
+  
+  /// Extract host from vless config URL
+  String _extractHostFromConfig(String config) {
+    try {
+      // Parse vless://uuid@host:port?...
+      if (config.startsWith('vless://')) {
+        final uri = Uri.tryParse(config);
+        if (uri != null) {
+          return uri.host;
+        }
+        // Fallback: manual parsing
+        final withoutPrefix = config.substring(8); // Remove 'vless://'
+        final atIndex = withoutPrefix.indexOf('@');
+        if (atIndex > 0) {
+          final hostPort = withoutPrefix.substring(atIndex + 1);
+          final colonIndex = hostPort.indexOf(':');
+          final questionIndex = hostPort.indexOf('?');
+          if (colonIndex > 0) {
+            final endIndex = questionIndex > 0 ? questionIndex : colonIndex;
+            return hostPort.substring(0, endIndex);
+          }
+        }
+      }
+    } catch (e) {
+      print('VPN SERVICE: Error extracting host: $e');
+    }
+    return '8.8.8.8'; // Default fallback
   }
 
   /// Test config
@@ -402,21 +455,84 @@ class VpnService {
     };
   }
 
+  /// Measure ping to server (before connection - to backend, after - through VPN)
+  Future<int> measurePing(String host) async {
+    try {
+      final stopwatch = Stopwatch()..start();
+      final response = await http.get(
+        Uri.parse('https://$host/health'),
+      ).timeout(const Duration(seconds: 5));
+      stopwatch.stop();
+      
+      if (response.statusCode == 200) {
+        return stopwatch.elapsedMilliseconds;
+      }
+      return -1;
+    } catch (e) {
+      print('VPN SERVICE: Ping error: $e');
+      return -1;
+    }
+  }
+
+  /// Get current ping (calls native method on Windows)
+  Future<int> getCurrentPing() async {
+    if (!_isWindows) return -1;
+    try {
+      final result = await _windowsChannel.invokeMethod<int>('getPing');
+      return result ?? -1;
+    } catch (e) {
+      print('VPN SERVICE: Get ping error: $e');
+      return -1;
+    }
+  }
+
+  /// Measure speed (download/upload in Mbps)
+  Future<Map<String, double>> measureSpeed() async {
+    try {
+      // Test download speed using a small test file
+      final downloadUrl = 'https://speed.cloudflare.com/__down?bytes=250000';
+      final downloadStopwatch = Stopwatch()..start();
+      final downloadResponse = await http.get(Uri.parse(downloadUrl))
+          .timeout(const Duration(seconds: 10));
+      downloadStopwatch.stop();
+      
+      double downloadSpeed = 0;
+      if (downloadResponse.statusCode == 200) {
+        final bytes = downloadResponse.bodyBytes.length;
+        final seconds = downloadStopwatch.elapsedMilliseconds / 1000;
+        downloadSpeed = (bytes * 8) / (seconds * 1000000); // Mbps
+      }
+      
+      return {
+        'download': downloadSpeed,
+        'upload': 0.0, // Upload test would require server-side endpoint
+      };
+    } catch (e) {
+      print('VPN SERVICE: Speed test error: $e');
+      return {'download': 0.0, 'upload': 0.0};
+    }
+  }
+
   /// Dispose resources
   void dispose() {
     if (_currentStatus == VpnStatus.connected) {
       disconnect();
     }
     
-    if (!_statusController.isClosed) _statusController.close();
-    if (!_errorController.isClosed) _errorController.close();
+    // Don't close controllers here - let them stay open for the app lifetime
+    // Just cancel any active connection
+    print('VPN SERVICE: dispose() called but keeping controllers open');
   }
 
   // Private methods
   void _updateStatus(VpnStatus status) {
+    print('VPN SERVICE: _updateStatus called: $status (previous: $_currentStatus)');
     _currentStatus = status;
     if (!_statusController.isClosed) {
       _statusController.add(status);
+      print('VPN SERVICE: Status added to controller, listeners notified');
+    } else {
+      print('VPN SERVICE: Status controller is closed!');
     }
   }
   

@@ -10,6 +10,8 @@ class HomeContent extends StatelessWidget {
   final String nameserver;
   final bool isfree;
   final bool isConnected;
+  final bool isConnecting;
+  final bool isDisconnecting;
   final Duration duration;
   final String pingResult;
   final int bytesReceived;
@@ -18,7 +20,7 @@ class HomeContent extends StatelessWidget {
   final String Function(Duration) formatDuration;
   final VoidCallback onToggleConnection;
   final VoidCallback onCheckSpeed;
-  final VoidCallback onChangeServer; // Изменено с Function на VoidCallback
+  final VoidCallback onChangeServer;
 
   const HomeContent({
     Key? key,
@@ -27,6 +29,8 @@ class HomeContent extends StatelessWidget {
     required this.nameserver,
     required this.isfree,
     required this.isConnected,
+    this.isConnecting = false,
+    this.isDisconnecting = false,
     required this.duration,
     required this.pingResult,
     required this.bytesReceived,
@@ -35,7 +39,7 @@ class HomeContent extends StatelessWidget {
     required this.formatDuration,
     required this.onToggleConnection,
     required this.onCheckSpeed,
-    required this.onChangeServer, // Теперь это VoidCallback
+    required this.onChangeServer,
   }) : super(key: key);
 
   @override
@@ -52,6 +56,8 @@ class HomeContent extends StatelessWidget {
           height: 240,
           child: ConnectionButton(
             isConnected: isConnected,
+            isConnecting: isConnecting,
+            isDisconnecting: isDisconnecting,
             duration: duration,
             formatDuration: formatDuration,
             onTap: onToggleConnection,
@@ -150,6 +156,8 @@ class HomeContent extends StatelessWidget {
                 child: Center(
                   child: ConnectionButton(
                     isConnected: isConnected,
+                    isConnecting: isConnecting,
+                    isDisconnecting: isDisconnecting,
                     duration: duration,
                     formatDuration: formatDuration,
                     onTap: onToggleConnection,

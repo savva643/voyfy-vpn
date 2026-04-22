@@ -68,9 +68,22 @@ class VpnProvider extends ChangeNotifier {
   StreamSubscription<DataUsage>? _dataUsageSubscription;
   StreamSubscription<VpnError>? _errorSubscription;
   Timer? _durationTimer;
+  
+  // Initialization state
+  bool _isInitializing = false;
+  bool _isInitialized = false;
+  bool get isInitialized => _isInitialized;
 
   /// Initialize the provider
   Future<void> initialize() async {
+    if (_isInitializing || _isInitialized) {
+      print('VPN PROVIDER: Already initialized or initializing, skipping');
+      return;
+    }
+    
+    _isInitializing = true;
+    print('VPN PROVIDER: Starting initialization...');
+    
     await _vpnService.initialize();
     
     // Listen to VPN status changes
@@ -99,6 +112,10 @@ class VpnProvider extends ChangeNotifier {
       _lastError = error;
       notifyListeners();
     });
+    
+    _isInitializing = false;
+    _isInitialized = true;
+    print('VPN PROVIDER: Initialization complete');
   }
 
   /// Set available servers

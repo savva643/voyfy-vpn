@@ -5,6 +5,8 @@ const kBgColor = Color(0xFF0038FF);
 
 class ConnectionButton extends StatelessWidget {
   final bool isConnected;
+  final bool isConnecting;
+  final bool isDisconnecting;
   final Duration duration;
   final String Function(Duration) formatDuration;
   final VoidCallback onTap;
@@ -13,6 +15,8 @@ class ConnectionButton extends StatelessWidget {
   const ConnectionButton({
     Key? key,
     required this.isConnected,
+    this.isConnecting = false,
+    this.isDisconnecting = false,
     required this.duration,
     required this.formatDuration,
     required this.onTap,
@@ -27,6 +31,21 @@ class ConnectionButton extends StatelessWidget {
     final fontSize = isDesktop ? 16.0 : 14.0;
     final durationFontSize = isDesktop ? 36.0 : 28.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Determine button state
+    final bool isBusy = isConnecting || isDisconnecting;
+    final Color buttonColor = isConnected ? Colors.green : (isBusy ? Colors.orange : kBgColor);
+    final String buttonText = isConnected 
+        ? 'disconnect'.tr() 
+        : (isConnecting 
+            ? 'connecting'.tr() 
+            : (isDisconnecting ? 'disconnecting'.tr() : 'connect'.tr()));
+    final String statusText = isConnected 
+        ? 'connected'.tr() 
+        : (isConnecting 
+            ? 'connecting'.tr() 
+            : (isDisconnecting ? 'disconnecting'.tr() : 'disconnected'.tr()));
+    final Color statusColor = isConnected ? Colors.green : (isBusy ? Colors.orange : Colors.red);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -64,18 +83,27 @@ class ConnectionButton extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.power_settings_new,
-                      size: iconSize,
-                      color: isConnected ? Colors.green : kBgColor,
-                    ),
+                    isBusy
+                        ? SizedBox(
+                            width: iconSize,
+                            height: iconSize,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(buttonColor),
+                            ),
+                          )
+                        : Icon(
+                            Icons.power_settings_new,
+                            size: iconSize,
+                            color: buttonColor,
+                          ),
                     const SizedBox(height: 8),
                     Text(
-                      isConnected ? 'disconnect'.tr() : 'connect'.tr(),
+                      buttonText,
                       style: TextStyle(
                         fontSize: fontSize,
                         fontWeight: FontWeight.w600,
-                        color: isConnected ? Colors.green : kBgColor,
+                        color: buttonColor,
                         fontFamily: 'Gilroy',
                       ),
                     ),
@@ -100,12 +128,24 @@ class ConnectionButton extends StatelessWidget {
                 height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isConnected ? Colors.green : Colors.red,
+                  color: isBusy ? Colors.orange : statusColor,
                 ),
+                child: isBusy
+                    ? Center(
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(width: 10),
               Text(
-                isConnected ? 'connected'.tr() : 'disconnected'.tr(),
+                statusText,
                 style: TextStyle(
                   color: isDark ? Colors.white : Colors.white,
                   fontSize: 16,
@@ -116,7 +156,7 @@ class ConnectionButton extends StatelessWidget {
             ],
           ),
         ),
-        if (isConnected) ...[
+        if (isConnected && !isBusy) ...[
           const SizedBox(height: 12),
           Text(
             formatDuration(duration),

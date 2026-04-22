@@ -1,5 +1,7 @@
 {
   "connect": "Connect",
+  "connecting": "Connecting...",
+  "disconnecting": "Disconnecting...",
   "languages": "Languages",
   "changelang": "Change language",
   "changeloc": "Change location",
@@ -14,6 +16,8 @@
   "mbpersecpl": " mb/s",
   "download": "Download",
   "upload": "Upload",
+  "received": "Received",
+  "sent": "Sent",
   "usa": "USA",
   "canada": "Canada",
   "search": "Search",

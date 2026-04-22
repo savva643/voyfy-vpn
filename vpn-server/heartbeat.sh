@@ -35,15 +35,39 @@ get_ping() {
     echo "${ping_ms:-0}"
 }
 
-# Получаем статистику
-get_stats() {
-    # Количество активных соединений Xray
-    local connections=0
-    if command -v ss &> /dev/null; then
-        connections=$(ss -tuln | grep -c ":443" 2>/dev/null || echo 0)
-    elif command -v netstat &> /dev/null; then
-        connections=$(netstat -tuln 2>/dev/null | grep -c ":443" || echo 0)
+# Получаем реальную статистику из Xray API
+get_xray_stats() {
+    local xray_users=0
+    local xray_up=0
+    local xray_down=0
+    
+    # Получаем статистику из Xray API (localhost:10085)
+    if command -v curl &> /dev/null; then
+        local stats=$(curl -s "http://localhost:10085/stats/query" 2>/dev/null || echo "")
+        if [[ -n "$stats" ]]; then
+            xray_users=$(echo "$stats" | grep -o '"email"[^}]*' | sort -u | wc -l)
+            xray_up=$(echo "$stats" | grep -o '"uplink":[0-9]*' | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+            xray_down=$(echo "$stats" | grep -o '"downlink":[0-9]*' | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+        fi
     fi
+    # Fallback: считаем уникальные IP вместо всех соединений
+    if [[ "$xray_users" -eq 0 ]]; then
+        if command -v ss &> /dev/null; then
+            xray_users=$(ss -tn state established 2>/dev/null | grep ":8444" | awk '{print $5}' | cut -d: -f1 | sort -u | wc -l)
+        elif command -v netstat &> /dev/null; then
+            xray_users=$(netstat -tn 2>/dev/null | grep ESTABLISHED | grep ":8444" | awk '{print $5}' | cut -d: -f1 | sort -u | wc -l)
+        fi
+    fi
+    echo "$xray_users $xray_up $xray_down"
+}
+
+# Получаем статистику системы
+get_stats() {
+    # Получаем реальную статистику Xray
+    local xray_stats=$(get_xray_stats)
+    local connections=$(echo "$xray_stats" | awk '{print $1}')
+    local traffic_up=$(echo "$xray_stats" | awk '{print $2}')
+    local traffic_down=$(echo "$xray_stats" | awk '{print $3}')
     
     # CPU load (1-min average)
     local cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//' 2>/dev/null || echo 0)
@@ -62,7 +86,7 @@ get_stats() {
         load=100
     fi
     
-    echo "$load $connections"
+    echo "$load $connections $traffic_up $traffic_down"
 }
 
 # Отправка heartbeat

@@ -43,9 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String nameserver = "usa".tr().toString();
   int idserv = 1;
   bool isfree = false;
-  bool _isConnected = false;
-  Duration _duration = const Duration();
-  Timer? _timer;
   Timer? _pingTimer;
   String _pingResult = '0';
   double downloadSpeed = 0;
@@ -56,74 +53,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String? _userUuid;
   String? _subscriptionUrl;
-  bool _isVpnInitialized = false;
   Map<String, dynamic>? _selectedServer;
 
   @override
   void initState() {
     super.initState();
     _loadServer();
-    _initializeVpn();
+    _loadUserData();
   }
-
-  Future<void> _initializeVpn() async {
+  
+  Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     _userUuid = prefs.getString('user_uuid');
-    
-    print('VPN INIT: user_uuid from prefs = $_userUuid');
-    
     if (_userUuid != null) {
-      print('VPN INIT: UUID found, initializing VPN engine...');
-      final vpnService = VpnService.instance;
-      
-      try {
-        // Initialize VPN engine
-        final initResult = await vpnService.initialize();
-        print('VPN INIT: initialize() returned $initResult');
-        
-        if (!initResult) {
-          print('VPN INIT FAILED: initialize() returned false');
-          return;
-        }
-        
-        // Store subscription URL for later use
-        _subscriptionUrl = ApiConfig.subscriptionByUuid(_userUuid!);
-        print('VPN INIT: Subscription URL ready: $_subscriptionUrl');
-        
-        // Listen to VPN status changes
-        vpnService.onStatusChanged.listen((status) {
-          setState(() {
-            _isConnected = status == VpnStatus.connected;
-            if (status == VpnStatus.disconnected) {
-              stopTimer();
-            } else if (status == VpnStatus.connected) {
-              startTimer();
-            }
-          });
-        });
-        
-        // Listen to data usage updates
-        vpnService.onDataUsageUpdated.listen((usage) {
-          setState(() {
-            _bytesReceived = usage.bytesReceived;
-            _bytesSent = usage.bytesSent;
-          });
-        });
-        
-        setState(() => _isVpnInitialized = true);
-        print('VPN INIT: SUCCESS - _isVpnInitialized = true');
-      } catch (e, stack) {
-        print('VPN INIT ERROR: $e');
-        print('VPN INIT STACK: $stack');
-      }
+      _subscriptionUrl = ApiConfig.subscriptionByUuid(_userUuid!);
     }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _pingTimer?.cancel();
-    VpnService.instance.dispose();
     super.dispose();
   }
 
@@ -131,31 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final counter = prefs.getInt('idserv') ?? 1;
     await changeServer(counter);
-  }
-
-  void startTimer() {
-    _pingHost('google.com');
-    _startPingLoop();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        _duration = Duration(seconds: _duration.inSeconds + 1);
-      });
-    });
-  }
-
-  void stopTimer() {
-    _pingTimer?.cancel();
-    _timer?.cancel();
-    setState(() {
-      _duration = const Duration();
-      _pingResult = '0';
-    });
-  }
-
-  void _startPingLoop() {
-    _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _pingHost('google.com');
-    });
   }
 
   Future<void> _pingHost(String host) async {
@@ -257,15 +181,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> toggleConnection() async {
-    if (!_isVpnInitialized) {
+    // Use VpnProvider which has proper server selection logic
+    final vpnProvider = context.read<VpnProvider>();
+    
+    if (!vpnProvider.isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('VPN not initialized. Please login first.')),
       );
       return;
     }
     
-    // Use VpnProvider which has proper server selection logic
-    final vpnProvider = context.read<VpnProvider>();
     final result = await vpnProvider.toggleConnection();
     
     if (!result && mounted) {
@@ -418,21 +343,28 @@ class _HomeScreenState extends State<HomeScreen> {
           onLogoutTap: showLogoutDialog,
         );
       default:
-        return HomeContent(
-          isDesktop: isDesktop,
-          flagUrl: flagUrl,
-          nameserver: nameserver,
-          isfree: isfree,
-          isConnected: _isConnected,
-          duration: _duration,
-          pingResult: _pingResult,
-          bytesReceived: _bytesReceived,
-          bytesSent: _bytesSent,
-          formatBytes: _formatBytes,
-          formatDuration: formatDuration,
-          onToggleConnection: toggleConnection,
-          onCheckSpeed: checkSpeed,
-          onChangeServer: _openServerSelection,
+        // Watch VpnProvider for connection status
+        return Consumer<VpnProvider>(
+          builder: (context, vpnProvider, child) {
+            return HomeContent(
+              isDesktop: isDesktop,
+              flagUrl: flagUrl,
+              nameserver: nameserver,
+              isfree: isfree,
+              isConnected: vpnProvider.isConnected,
+              isConnecting: vpnProvider.isConnecting,
+              isDisconnecting: vpnProvider.isDisconnecting,
+              duration: vpnProvider.connectionDuration ?? const Duration(),
+              pingResult: _pingResult,
+              bytesReceived: _bytesReceived,
+              bytesSent: _bytesSent,
+              formatBytes: _formatBytes,
+              formatDuration: formatDuration,
+              onToggleConnection: toggleConnection,
+              onCheckSpeed: checkSpeed,
+              onChangeServer: _openServerSelection,
+            );
+          },
         );
     }
   }

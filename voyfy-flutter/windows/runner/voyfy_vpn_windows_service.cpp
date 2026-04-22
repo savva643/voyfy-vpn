@@ -381,11 +381,22 @@ static bool StartXray() {
     AppendServiceLog("[service] Xray started successfully with PID: " + std::to_string(pi.dwProcessId));
     
     // Wait a bit and check if Xray is still running
-    Sleep(1000);
+    Sleep(2000);
     DWORD exitCode;
     if (GetExitCodeProcess(g_xrayProcess, &exitCode)) {
         if (exitCode != STILL_ACTIVE) {
-            AppendServiceLog("[service] Xray exited with code: " + std::to_string(exitCode));
+            AppendServiceLog("[service] Xray exited immediately with code: " + std::to_string(exitCode));
+            // Log xray error log if exists
+            std::wstring errLogPath = dataDir + L"\\error.log";
+            if (FileExists(errLogPath)) {
+                std::ifstream errFile(errLogPath);
+                if (errFile.is_open()) {
+                    std::string line;
+                    while (std::getline(errFile, line)) {
+                        AppendServiceLog("[xray] " + line);
+                    }
+                }
+            }
             return false;
         }
         AppendServiceLog("[service] Xray is running");
