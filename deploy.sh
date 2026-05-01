@@ -246,9 +246,12 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
     download_xray "linux" "arm64" "xray-linux-arm64" "Xray-linux-arm64.zip" || \
         download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a" "Xray-linux-arm64-v8a.zip" || \
         echo "  Linux ARM64 not available, skipping..."
-    download_xray "macos" "64" "xray-darwin-64" "Xray-darwin-64.zip"
-    download_xray "macos" "arm64-v8a" "xray-darwin-arm64" "Xray-darwin-arm64.zip" || \
-        download_xray "macos" "arm64" "xray-darwin-arm64" "Xray-darwin-arm64.zip"
+    download_xray "macos" "64" "xray-macos-64" "Xray-macos-64.zip" || \
+        download_xray "macos" "64" "xray-darwin-64" "Xray-darwin-amd64.zip" || \
+        echo "  macOS Intel download failed, skipping..."
+    download_xray "macos" "arm64" "xray-macos-arm64" "Xray-macos-arm64.zip" || \
+        download_xray "macos" "arm64-v8a" "xray-darwin-arm64" "Xray-darwin-arm64.zip" || \
+        echo "  macOS ARM64 download failed, skipping..."
     
     echo "Xray binaries download complete!"
     echo "Available binaries:"
