@@ -1,15 +1,19 @@
 #include <windows.h>
 #include <shlobj.h>
 #include <iphlpapi.h>
+#include <winhttp.h>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <chrono>
+#include <atomic>
 #include <algorithm>
 #include <iterator>
+#include <vector>
 
 #pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "winhttp.lib")
 
 static bool FileExists(const std::wstring& path) {
     DWORD attribs = GetFileAttributesW(path.c_str());
@@ -142,6 +146,7 @@ static bool StopXray() {
     return true;
 }
 
+
 // Parse server IP from config file
 static std::string ParseServerIPFromFile() {
     std::wstring dir = GetDataDir();
@@ -196,28 +201,45 @@ static bool AddServerBypassRoute(const std::string& serverIP) {
     }
 }
 
-// Disable Windows Firewall for all profiles
-static bool DisableFirewall() {
-    AppendServiceLog("[service] Disabling Windows Firewall...");
-    int result = system("netsh advfirewall set allprofiles state off");
-    if (result == 0) {
-        AppendServiceLog("[service] Windows Firewall disabled successfully");
+// Open firewall ports for VPN (1080, 10085, 8444, 53)
+static bool OpenFirewallPorts() {
+    AppendServiceLog("[service] Opening firewall ports for VPN...");
+    
+    // Delete existing rule first to avoid duplicates
+    system("netsh advfirewall firewall delete rule name=\"Xray VPN\"");
+    
+    // Add inbound rule for TCP ports
+    int result_in = system("netsh advfirewall firewall add rule name=\"Xray VPN\" dir=in action=allow protocol=tcp localport=1080,10085,8444");
+    // Add inbound rule for UDP (DNS)
+    int result_in_udp = system("netsh advfirewall firewall add rule name=\"Xray VPN UDP\" dir=in action=allow protocol=udp localport=53,1080");
+    // Add outbound rule for TCP ports
+    int result_out = system("netsh advfirewall firewall add rule name=\"Xray VPN Out\" dir=out action=allow protocol=tcp localport=1080,10085,8444");
+    // Add outbound rule for UDP
+    int result_out_udp = system("netsh advfirewall firewall add rule name=\"Xray VPN Out UDP\" dir=out action=allow protocol=udp localport=53,1080");
+    
+    if (result_in == 0 && result_in_udp == 0 && result_out == 0 && result_out_udp == 0) {
+        AppendServiceLog("[service] Firewall ports opened successfully");
         return true;
     } else {
-        AppendServiceLog("[service] Failed to disable firewall, result: " + std::to_string(result));
+        AppendServiceLog("[service] Failed to open some firewall ports");
         return false;
     }
 }
 
-// Enable Windows Firewall for all profiles
-static bool EnableFirewall() {
-    AppendServiceLog("[service] Enabling Windows Firewall...");
-    int result = system("netsh advfirewall set allprofiles state on");
-    if (result == 0) {
-        AppendServiceLog("[service] Windows Firewall enabled successfully");
+// Close firewall ports for VPN
+static bool CloseFirewallPorts() {
+    AppendServiceLog("[service] Closing firewall ports for VPN...");
+    
+    int result1 = system("netsh advfirewall firewall delete rule name=\"Xray VPN\"");
+    int result2 = system("netsh advfirewall firewall delete rule name=\"Xray VPN UDP\"");
+    int result3 = system("netsh advfirewall firewall delete rule name=\"Xray VPN Out\"");
+    int result4 = system("netsh advfirewall firewall delete rule name=\"Xray VPN Out UDP\"");
+    
+    if (result1 == 0 || result2 == 0 || result3 == 0 || result4 == 0) {
+        AppendServiceLog("[service] Firewall ports closed successfully");
         return true;
     } else {
-        AppendServiceLog("[service] Failed to enable firewall, result: " + std::to_string(result));
+        AppendServiceLog("[service] Failed to close some firewall ports (may not exist)");
         return false;
     }
 }
@@ -421,7 +443,7 @@ static std::string HandleCommand(const std::string& cmdLine) {
     }
     if (cmdLine == "DISCONNECT") {
         StopXray();
-        EnableFirewall();  // Re-enable firewall on disconnect
+        CloseFirewallPorts();  // Close firewall ports on disconnect
         return "OK";
     }
 
@@ -435,14 +457,15 @@ static std::string HandleCommand(const std::string& cmdLine) {
             return "ERR write_config";
         }
         
-        // Disable firewall before starting VPN
-        DisableFirewall();
+        // Open firewall ports before starting VPN
+        OpenFirewallPorts();
         
         // Now start Xray (it will parse server IP from the written config file)
         if (!StartXray()) {
-            EnableFirewall();  // Re-enable firewall if Xray fails
+            CloseFirewallPorts();  // Close ports if Xray fails
             return "ERR start_xray";
         }
+        
         return "OK";
     }
 

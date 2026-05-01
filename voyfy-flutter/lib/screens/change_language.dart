@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpni/screens/home_screen.dart';
+import 'package:flutter_vpni/services/tray_manager.dart';
 
 const kGradientStart = Color(0xFF0038FF);
 const kGradientEnd = Color(0xFF8220F9);
@@ -71,6 +73,12 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
     setState(() => _selectedLang = lang['min']);
     context.locale = Locale(lang['min'], lang['max']);
     await Future.delayed(const Duration(milliseconds: 300));
+    
+    // Update tray menu with new locale
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      TrayManager().rebuildWithContext(context);
+    }
+    
     if (mounted) {
       Navigator.pop(context);
     }
@@ -363,17 +371,18 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
   }
 
   Widget _buildSearchBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: _searchLanguageController,
       onChanged: _loadSearchedLanguages,
-      style: const TextStyle(
-        color: Colors.black87,
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.black87,
         fontFamily: 'Gilroy',
         fontSize: 16,
       ),
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -387,16 +396,16 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
           borderSide: const BorderSide(color: kGradientStart, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 22),
+        prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade500 : Colors.grey.shade400, size: 22),
         hintText: 'search'.tr(),
         hintStyle: TextStyle(
-          color: Colors.grey.shade400,
+          color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
           fontFamily: 'Gilroy',
           fontSize: 16,
         ),
         suffixIcon: _searchLanguageController.text.isNotEmpty
           ? IconButton(
-              icon: Icon(Icons.clear, color: Colors.grey.shade400, size: 20),
+              icon: Icon(Icons.clear, color: isDark ? Colors.grey.shade500 : Colors.grey.shade400, size: 20),
               onPressed: _clearSearch,
             )
           : null,
@@ -405,17 +414,18 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
   }
 
   Widget _buildDesktopSearchBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: _searchLanguageController,
       onChanged: _loadSearchedLanguages,
-      style: const TextStyle(
-        color: Colors.black87,
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.black87,
         fontFamily: 'Gilroy',
         fontSize: 16,
       ),
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -429,16 +439,16 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
           borderSide: const BorderSide(color: kGradientStart, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 24),
+        prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade500 : Colors.grey.shade400, size: 24),
         hintText: 'search'.tr(),
         hintStyle: TextStyle(
-          color: Colors.grey.shade400,
+          color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
           fontFamily: 'Gilroy',
           fontSize: 16,
         ),
         suffixIcon: _searchLanguageController.text.isNotEmpty
           ? IconButton(
-              icon: Icon(Icons.clear, color: Colors.grey.shade400, size: 22),
+              icon: Icon(Icons.clear, color: isDark ? Colors.grey.shade500 : Colors.grey.shade400, size: 22),
               onPressed: _clearSearch,
             )
           : null,
@@ -448,13 +458,14 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
 
   Widget _buildLanguageCard(Map lang) {
     final isSelected = _selectedLang == lang['min'];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isSelected ? kGradientStart.withOpacity(0.1) : Colors.white,
+        color: isSelected ? kGradientStart.withOpacity(0.1) : (isDark ? const Color(0xFF2A2A2A) : Colors.white),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isSelected ? kGradientStart : Colors.grey.shade200,
+          color: isSelected ? kGradientStart : (isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200),
           width: isSelected ? 2 : 1,
         ),
         boxShadow: [
@@ -504,7 +515,7 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'Gilroy',
-                      color: isSelected ? kGradientStart : Colors.black87,
+                      color: isSelected ? kGradientStart : (isDark ? Colors.white : Colors.black87),
                     ),
                   ),
                 ),
@@ -524,7 +535,7 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
                 else
                   Icon(
                     Icons.arrow_forward_ios,
-                    color: Colors.grey.shade400,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
                     size: 18,
                   ),
               ],
@@ -537,13 +548,14 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
 
   Widget _buildDesktopLanguageCard(Map lang) {
     final isSelected = _selectedLang == lang['min'];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: isSelected ? kGradientStart.withOpacity(0.05) : Colors.grey.shade50,
+        color: isSelected ? kGradientStart.withOpacity(0.05) : (isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isSelected ? kGradientStart : Colors.grey.shade200,
+          color: isSelected ? kGradientStart : (isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200),
           width: isSelected ? 2 : 1,
         ),
       ),
@@ -588,7 +600,7 @@ class _ChangeLanguageState extends State<ChangeLanguage> {
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           fontFamily: 'Gilroy',
-                          color: isSelected ? kGradientStart : Colors.black87,
+                          color: isSelected ? kGradientStart : (isDark ? Colors.white : Colors.black87),
                         ),
                       ),
                       const SizedBox(height: 4),

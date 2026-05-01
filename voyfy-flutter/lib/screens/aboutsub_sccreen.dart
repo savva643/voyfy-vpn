@@ -142,6 +142,7 @@ class _AboutsubScreenState extends State<AboutsubScreen> {
   Widget _buildPlanFeaturesList() {
     final isPremium = subscriptionType.toLowerCase() != 'free';
     final isDesktop = MediaQuery.of(context).size.width > 600;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final plan = _plans.firstWhere((p) => 
       isPremium ? p['name'] == 'Premium' : p['name'] == 'Free',
       orElse: () => _plans.first,
@@ -156,17 +157,21 @@ class _AboutsubScreenState extends State<AboutsubScreen> {
             fontSize: 20,
             fontWeight: FontWeight.w700,
             fontFamily: 'Gilroy',
-            color: isDesktop ? Colors.white : Colors.grey.shade800,
+            color: isDesktop ? Colors.white : (isDark ? Colors.white : Colors.grey.shade800),
           ),
         ),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: isDesktop ? Colors.white.withOpacity(0.15) : Colors.grey.shade50,
+            color: isDesktop 
+                ? Colors.white.withOpacity(0.15) 
+                : (isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isDesktop ? Colors.white.withOpacity(0.2) : Colors.grey.shade200,
+              color: isDesktop 
+                  ? Colors.white.withOpacity(0.2) 
+                  : (isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200),
             ),
           ),
           child: Column(
@@ -186,7 +191,7 @@ class _AboutsubScreenState extends State<AboutsubScreen> {
                         _getLocalizedFeature(feature),
                         style: TextStyle(
                           fontSize: 15,
-                          color: isDesktop ? Colors.white : Colors.grey.shade700,
+                          color: isDesktop ? Colors.white : (isDark ? Colors.white70 : Colors.grey.shade700),
                           fontFamily: 'Gilroy',
                         ),
                       ),
@@ -422,6 +427,7 @@ class _AboutsubScreenState extends State<AboutsubScreen> {
 
   Widget _buildCurrentPlanCard() {
     final isPremium = subscriptionType.toLowerCase() != 'free';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -429,13 +435,13 @@ class _AboutsubScreenState extends State<AboutsubScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isPremium
-              ? [Colors.orange, Colors.deepOrange]
-              : [const Color(0xff28C0C1), const Color(0xff20B2AA)],
+              ? (isDark ? [Colors.orange.shade800, Colors.deepOrange.shade900] : [Colors.orange, Colors.deepOrange])
+              : (isDark ? [const Color(0xff1A5F5F), const Color(0xff0D7377)] : [const Color(0xff28C0C1), const Color(0xff20B2AA)]),
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (isPremium ? Colors.orange : const Color(0xff28C0C1)).withOpacity(0.3),
+            color: (isPremium ? Colors.orange : const Color(0xff28C0C1)).withOpacity(isDark ? 0.5 : 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),

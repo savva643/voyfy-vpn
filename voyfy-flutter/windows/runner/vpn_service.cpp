@@ -1,23 +1,35 @@
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef _WINSOCKAPI_
+#define _WINSOCKAPI_   // Prevent windows.h from including winsock.h
+#endif
+#define _WINSOCK_DEPRECATED_NO_WARNINGS  // Allow inet_addr and gethostbyname
+
 #include "vpn_service.h"
 #include "tun_manager.h"
 
+#include <winsock2.h>  // Must be included BEFORE windows.h to avoid conflicts
 #include <windows.h>
 #include <tlhelp32.h>  // For CreateToolhelp32Snapshot, Process32FirstW, etc.
 #include <shlobj.h>
 #include <wininet.h>
 #include <winsvc.h>
-#include <iphlpapi.h>  // For GetIfTable
+#include <iphlpapi.h>  // For GetIfTable and ICMP functions
 #include <vector>
 #include <fstream>
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <chrono>
 #include <shellapi.h>
 #include <winhttp.h>   // For HTTP requests to Xray API
+#include <icmpapi.h>   // For ICMP ping (IcmpSendEcho)
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "ws2_32.lib")    // For Winsock (inet_addr, gethostbyname)
 
 static bool FileExists(const std::wstring& path) {
     DWORD attribs = GetFileAttributesW(path.c_str());
@@ -148,8 +160,14 @@ static std::mutex g_status_mutex;
 static std::vector<std::pair<std::string, std::pair<int,int>>> g_pending_statuses;
 static UINT_PTR g_status_timer_id = 0;  // Timer ID for processing pending statuses
 
-// Forward declaration
+// Stats timer
+static UINT_PTR g_stats_timer_id = 0;
+
+// Forward declarations
 static void CALLBACK StatusTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+static void CALLBACK StatsTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+static void StartStatsTimer();
+static void StopStatsTimer();
 
 // TUN configuration constants
 static const char* TUN_IP = "10.0.0.2";
@@ -1052,77 +1070,13 @@ void SendDataUsage(int bytesReceived, int bytesSent) {
     }
 }
 
-// Get Xray traffic stats from API (localhost:10085)
-static bool GetXrayStats(long long& bytesReceived, long long& bytesSent) {
-    HINTERNET hSession = WinHttpOpen(L"VoyfyVPN/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
-    if (!hSession) return false;
-    
-    HINTERNET hConnect = WinHttpConnect(hSession, L"127.0.0.1", 10085, 0);
-    if (!hConnect) {
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-    
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/stats/query", NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
-    if (!hRequest) {
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-    
-    bool success = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (!success || !WinHttpReceiveResponse(hRequest, NULL)) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-    
-    // Read response (simplified - just check if API responds)
-    DWORD bytesAvailable = 0;
-    WinHttpQueryDataAvailable(hRequest, &bytesAvailable);
-    
-    // For now, return mock stats based on API availability
-    // TODO: Parse actual JSON response
-    static long long s_recv = 0, s_sent = 0;
-    s_recv += bytesAvailable > 0 ? 1024 : 0; // Mock increment
-    s_sent += bytesAvailable > 0 ? 512 : 0;
-    bytesReceived = s_recv;
-    bytesSent = s_sent;
-    
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-    
-    return bytesAvailable > 0;
-}
-
-// Global stats timer
-static UINT_PTR g_stats_timer_id = 0;
-static void CALLBACK StatsTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
-    if (g_status == "connected") {
-        long long recv = 0, sent = 0;
-        if (GetXrayStats(recv, sent)) {
-            SendDataUsage(static_cast<int>(recv / 1024), static_cast<int>(sent / 1024)); // KB
-        }
-    }
-}
-
-static void StartStatsTimer() {
-    if (g_stats_timer_id == 0) {
-        g_stats_timer_id = SetTimer(nullptr, 0, 1000, StatsTimerProc); // Every 1 second
-        OutputDebugStringW(L"[VPN] Stats timer started\n");
-    }
-}
-
-
+// Get Xray traffic
 void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
     // Store main thread ID for thread safety checks
     g_main_thread_id = GetCurrentThreadId();
     
-    // Start timers for status processing and stats updates
+    // Start timer for status processing
     StartStatusTimer();
-    StartStatsTimer();
     
     // Main VPN channel
     auto channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
@@ -1231,6 +1185,7 @@ void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
         }
         else if (method == "disconnect") {
             SendStatus("disconnecting");
+            // Stats thread is managed by Windows service
             std::string resp;
             PipeSendCommand("DISCONNECT", &resp);
             AppendNativeLog(std::string("[native] DISCONNECT resp=") + resp);
@@ -1261,9 +1216,64 @@ void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
             result->Success(flutter::EncodableValue(valid));
         }
         else if (method == "ping") {
-            // Simple ping - for now return static value to avoid header issues
-            // TODO: Implement proper ICMP ping with correct Windows types
-            result->Success(flutter::EncodableValue(50));
+            // ICMP ping implementation
+            const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+            std::string host = "8.8.8.8"; // default
+            if (args) {
+                auto it = args->find(flutter::EncodableValue("host"));
+                if (it != args->end()) {
+                    const std::string* hostPtr = std::get_if<std::string>(&it->second);
+                    if (hostPtr && !hostPtr->empty()) {
+                        host = *hostPtr;
+                    }
+                }
+            }
+            
+            // Convert host to wide string for WinHTTP
+            std::wstring whost(host.begin(), host.end());
+            
+            // Try ICMP ping first
+            HANDLE hIcmp = IcmpCreateFile();
+            if (hIcmp == INVALID_HANDLE_VALUE) {
+                result->Success(flutter::EncodableValue(-1));
+                return;
+            }
+            
+            // Prepare ICMP echo request
+            char sendData[32] = "VPNPing";
+            DWORD replySize = sizeof(ICMP_ECHO_REPLY) + sizeof(sendData) + 8;
+            std::vector<BYTE> replyBuffer(replySize);
+            
+            // Resolve hostname to IP if needed
+            DWORD ipAddr = inet_addr(host.c_str());
+            if (ipAddr == INADDR_NONE) {
+                // Need to resolve hostname
+                HOSTENT* hostEnt = gethostbyname(host.c_str());
+                if (hostEnt) {
+                    ipAddr = *(DWORD*)hostEnt->h_addr_list[0];
+                } else {
+                    IcmpCloseHandle(hIcmp);
+                    result->Success(flutter::EncodableValue(-1));
+                    return;
+                }
+            }
+            
+            // Send ICMP echo request with 3 second timeout
+            DWORD pingResult = IcmpSendEcho(hIcmp, ipAddr, sendData, sizeof(sendData), 
+                                           NULL, replyBuffer.data(), replySize, 3000);
+            
+            IcmpCloseHandle(hIcmp);
+            
+            if (pingResult > 0) {
+                PICMP_ECHO_REPLY echoReply = (PICMP_ECHO_REPLY)replyBuffer.data();
+                if (echoReply->Status == IP_SUCCESS) {
+                    result->Success(flutter::EncodableValue((int)echoReply->RoundTripTime));
+                    return;
+                }
+            }
+            
+            // ICMP failed, fallback to -1
+            result->Success(flutter::EncodableValue(-1));
         }
         else if (method == "checkAndDownloadXray") {
             std::wstring appDir = GetAppDataDir();

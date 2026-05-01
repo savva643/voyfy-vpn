@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:ffi';
+import 'dart:typed_data';
+import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpnengine/vpnclient_engine_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:archive/archive.dart';
+import 'xray_downloader.dart';
 
 /// VPN Status
 enum VpnStatus {
@@ -55,8 +60,17 @@ class VpnService {
   static const MethodChannel _windowsChannel = MethodChannel('com.voyfy.vpn/windows');
   static const MethodChannel _windowsDataChannel = MethodChannel('com.voyfy.vpn/data');
 
+  // Linux/macOS MethodChannels
+  static const MethodChannel _linuxChannel = MethodChannel('com.voyfy.vpn/linux');
+  static const MethodChannel _linuxDataChannel = MethodChannel('com.voyfy.vpn/linux_data');
+  static const MethodChannel _macosChannel = MethodChannel('com.voyfy.vpn/macos');
+  static const MethodChannel _macosDataChannel = MethodChannel('com.voyfy.vpn/macos_data');
+
   // Platform check
   bool get _isWindows => Platform.isWindows;
+  bool get _isLinux => Platform.isLinux;
+  bool get _isMacOS => Platform.isMacOS;
+  bool get _isDesktop => _isWindows || _isLinux || _isMacOS;
 
   Stream<VpnStatus> get onStatusChanged => _statusController.stream;
   Stream<DataUsage> get onDataUsageUpdated => _dataUsageController.stream;
@@ -98,6 +112,32 @@ class VpnService {
         
         // Setup data usage channel
         _windowsDataChannel.setMethodCallHandler((call) async {
+          print('VPN SERVICE: Data channel call: ${call.method}, args: ${call.arguments}');
+          if (call.method == 'onDataUsageUpdated') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            final received = args['bytesReceived'] as int? ?? 0;
+            final sent = args['bytesSent'] as int? ?? 0;
+            print('VPN SERVICE: Data from native - received: $received, sent: $sent');
+            _updateDataUsage(DataUsage(
+              bytesReceived: received,
+              bytesSent: sent,
+            ));
+          }
+          return null;
+        });
+        final result = await _windowsChannel.invokeMethod<bool>('initialize');
+        print('VPN SERVICE: Windows initialized');
+        return result ?? false;
+      } else if (_isLinux) {
+        // Setup Linux MethodChannel
+        _linuxChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onStatusChanged') {
+            final statusStr = call.arguments as String;
+            _updateStatus(_parseDesktopStatus(statusStr));
+          }
+          return null;
+        });
+        _linuxDataChannel.setMethodCallHandler((call) async {
           if (call.method == 'onDataUsageUpdated') {
             final args = call.arguments as Map<dynamic, dynamic>;
             _updateDataUsage(DataUsage(
@@ -107,11 +147,31 @@ class VpnService {
           }
           return null;
         });
-        final result = await _windowsChannel.invokeMethod<bool>('initialize');
-        print('VPN SERVICE: Windows initialized');
+        final result = await _linuxChannel.invokeMethod<bool>('initialize');
+        return result ?? false;
+      } else if (_isMacOS) {
+        // Setup macOS MethodChannel
+        _macosChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onStatusChanged') {
+            final statusStr = call.arguments as String;
+            _updateStatus(_parseDesktopStatus(statusStr));
+          }
+          return null;
+        });
+        _macosDataChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onDataUsageUpdated') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            _updateDataUsage(DataUsage(
+              bytesReceived: args['bytesReceived'] as int? ?? 0,
+              bytesSent: args['bytesSent'] as int? ?? 0,
+            ));
+          }
+          return null;
+        });
+        final result = await _macosChannel.invokeMethod<bool>('initialize');
         return result ?? false;
       } else {
-        // Use flutter_vpnengine for mobile
+        // Use flutter_vpnengine for mobile (Android/iOS)
         VpnclientEngineFlutter.instance.setStatusCallback((status) {
           _updateStatus(_mapStatus(status));
         });
@@ -143,6 +203,11 @@ class VpnService {
     }
   }
 
+  VpnStatus _parseDesktopStatus(String status) {
+    // Same logic for Linux/macOS desktop
+    return _parseWindowsStatus(status);
+  }
+
   VpnStatus _mapStatus(ConnectionStatus status) {
     switch (status) {
       case ConnectionStatus.disconnected:
@@ -160,15 +225,16 @@ class VpnService {
 
   /// Connect using VLESS/Xray config
   Future<bool> connect({required String config, String? serverName}) async {
-    print('VPN SERVICE: connect() called, isWindows=$_isWindows');
+    print('VPN SERVICE: connect() called, platform: Windows=$_isWindows, Linux=$_isLinux, macOS=$_isMacOS');
     try {
       _updateStatus(VpnStatus.connecting);
       _currentConfig = config;
       _currentServerName = serverName;
 
-      if (_isWindows) {
-        print('VPN SERVICE: Windows detected, checking xray...');
-        // Download xray.exe if not exists
+      // For desktop platforms (Windows, Linux, macOS)
+      if (_isDesktop) {
+        print('VPN SERVICE: Desktop detected, checking xray...');
+        // Download xray binary if not exists
         final xrayReady = await _ensureXrayExists();
         if (!xrayReady) {
           _errorController.add(VpnError(
@@ -178,13 +244,28 @@ class VpnService {
           _updateStatus(VpnStatus.error);
           return false;
         }
-        print('VPN SERVICE: Calling Windows connect...');
-        print('VPN SERVICE: Config length: ${config.length}, starts with: ${config.substring(0, config.length > 20 ? 20 : config.length)}');
-        final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
-        print('VPN SERVICE: Windows connect returned: $result');
-        return result ?? false;
+        
+        // Platform-specific connect
+        if (_isWindows) {
+          print('VPN SERVICE: Calling Windows connect...');
+          final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
+          print('VPN SERVICE: Windows connect returned: $result');
+          return result ?? false;
+        } else if (_isLinux) {
+          print('VPN SERVICE: Calling Linux connect...');
+          final result = await _linuxChannel.invokeMethod<bool>('connect', {'config': config});
+          print('VPN SERVICE: Linux connect returned: $result');
+          return result ?? false;
+        } else if (_isMacOS) {
+          print('VPN SERVICE: Calling macOS connect...');
+          final result = await _macosChannel.invokeMethod<bool>('connect', {'config': config});
+          print('VPN SERVICE: macOS connect returned: $result');
+          return result ?? false;
+        }
+        return false;
       }
 
+      // Mobile platforms use flutter_vpnengine
       final result = await VpnclientEngineFlutter.client.connect(EngineType.libxray, config);
       
       if (!result) {
@@ -211,6 +292,12 @@ class VpnService {
       
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<bool>('disconnect');
         return result ?? false;
       }
       
@@ -265,105 +352,6 @@ class VpnService {
       return await _copyXrayFromAssets();
     } catch (e, stackTrace) {
       print('VPN SERVICE: Xray check error: $e');
-      print('VPN SERVICE: Stack trace: $stackTrace');
-      return false;
-    }
-  }
-  
-  /// Download Xray for Windows
-  Future<bool> _downloadXray() async {
-    try {
-      // Xray Windows download URL (latest release)
-      const xrayUrl = 'https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip';
-      
-      print('VPN SERVICE: Downloading from $xrayUrl');
-      final response = await http.get(Uri.parse(xrayUrl));
-      
-      if (response.statusCode != 200) {
-        print('VPN SERVICE: Download failed: ${response.statusCode}');
-        return false;
-      }
-      
-      // Get AppData path
-      final appData = Platform.environment['LOCALAPPDATA'];
-      final xrayDir = Directory('$appData\\VoyfyVPN');
-      
-      if (!await xrayDir.exists()) {
-        await xrayDir.create(recursive: true);
-      }
-      
-      // Save zip file
-      final zipPath = '${xrayDir.path}\\xray.zip';
-      await File(zipPath).writeAsBytes(response.bodyBytes);
-      print('VPN SERVICE: Saved to $zipPath');
-      
-      // Extract zip file
-      final bytes = await File(zipPath).readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
-      
-      // Find and extract xray.exe
-      for (final file in archive) {
-        if (file.name.toLowerCase() == 'xray.exe') {
-          final xrayPath = '${xrayDir.path}\\xray.exe';
-          await File(xrayPath).writeAsBytes(file.content as List<int>);
-          print('VPN SERVICE: Extracted xray.exe to $xrayPath');
-          
-          // Delete zip file
-          await File(zipPath).delete();
-          return true;
-        }
-      }
-      
-      print('VPN SERVICE: xray.exe not found in archive');
-      return false;
-    } catch (e) {
-      print('VPN SERVICE: Download error: $e');
-      return false;
-    }
-  }
-
-  /// Copy Xray from assets to app directory
-  Future<bool> _copyXrayFromAssets() async {
-    try {
-      final appData = Platform.environment['LOCALAPPDATA'];
-      final xrayDir = Directory('$appData\\VoyfyVPN');
-      
-      print('VPN SERVICE: Copying to $xrayDir');
-      
-      if (!await xrayDir.exists()) {
-        print('VPN SERVICE: Creating directory $xrayDir');
-        await xrayDir.create(recursive: true);
-      }
-      
-      // Files to copy from assets
-      final files = ['xray.exe', 'geoip.dat', 'geosite.dat', 'wintun.dll'];
-      
-      for (final file in files) {
-        try {
-          print('VPN SERVICE: Loading $file from assets...');
-          final byteData = await rootBundle.load('assets/xray/$file');
-          print('VPN SERVICE: Loaded $file, size: ${byteData.lengthInBytes} bytes');
-          final bytes = byteData.buffer.asUint8List();
-          final filePath = '${xrayDir.path}\\$file';
-          await File(filePath).writeAsBytes(bytes);
-          print('VPN SERVICE: Copied $file to $filePath');
-        } catch (e) {
-          print('VPN SERVICE: Failed to copy $file: $e');
-          // Continue with other files
-        }
-      }
-      
-      // Check if xray.exe exists
-      final xrayPath = '${xrayDir.path}\\xray.exe';
-      if (await File(xrayPath).exists()) {
-        print('VPN SERVICE: Xray ready at $xrayPath');
-        return true;
-      }
-      
-      print('VPN SERVICE: xray.exe not found after copy');
-      return false;
-    } catch (e, stackTrace) {
-      print('VPN SERVICE: Copy from assets error: $e');
       print('VPN SERVICE: Stack trace: $stackTrace');
       return false;
     }
@@ -455,22 +443,79 @@ class VpnService {
     };
   }
 
-  /// Measure ping to server (before connection - to backend, after - through VPN)
+  /// Measure ping to server using native ICMP (Windows) or HTTP fallback
   Future<int> measurePing(String host) async {
-    try {
-      final stopwatch = Stopwatch()..start();
-      final response = await http.get(
-        Uri.parse('https://$host/health'),
-      ).timeout(const Duration(seconds: 5));
-      stopwatch.stop();
-      
-      if (response.statusCode == 200) {
-        return stopwatch.elapsedMilliseconds;
+    if (_isWindows) {
+      // Use native ICMP ping on Windows
+      try {
+        final result = await _windowsChannel.invokeMethod<int>('ping', {
+          'host': host,
+        }).timeout(const Duration(seconds: 5));
+        
+        // If ICMP succeeded, return the result
+        if (result != null && result > 0) {
+          return result;
+        }
+        
+        // ICMP failed or returned -1, try HTTP ping as fallback
+        print('VPN SERVICE: ICMP ping failed, trying HTTP fallback...');
+      } catch (e) {
+        print('VPN SERVICE: Native ping error: $e, trying HTTP fallback...');
       }
-      return -1;
-    } catch (e) {
-      print('VPN SERVICE: Ping error: $e');
-      return -1;
+      
+      // HTTP fallback - try to ping via HTTP request
+      try {
+        final stopwatch = Stopwatch()..start();
+        final isIp = RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
+        
+        // For IP addresses, try HTTP to avoid SSL cert issues
+        // For domains, try HTTPS
+        final protocol = isIp ? 'http' : 'https';
+        
+        // Try Cloudflare's 1.1.1.1 or Google's DNS as fallback
+        // or use the host directly if it's an IP
+        String pingUrl;
+        if (host == '1.1.1.1' || host == '8.8.8.8' || host == '8.8.4.4') {
+          // DNS servers - just try HTTP to port 80
+          pingUrl = '$protocol://$host';
+        } else {
+          // Try common endpoints
+          pingUrl = '$protocol://$host/health';
+        }
+        
+        print('VPN SERVICE: HTTP ping to $pingUrl');
+        
+        final response = await http.get(
+          Uri.parse(pingUrl),
+        ).timeout(const Duration(seconds: 3));
+        stopwatch.stop();
+        
+        // Any response (even error) means server is reachable
+        print('VPN SERVICE: HTTP ping response: ${response.statusCode} in ${stopwatch.elapsedMilliseconds}ms');
+        return stopwatch.elapsedMilliseconds;
+      } catch (e) {
+        print('VPN SERVICE: HTTP ping error: $e');
+        return -1;
+      }
+    } else {
+      // Fallback to HTTP ping on other platforms
+      try {
+        final stopwatch = Stopwatch()..start();
+        final isIp = RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
+        final protocol = isIp ? 'http' : 'https';
+        final response = await http.get(
+          Uri.parse('$protocol://$host/health'),
+        ).timeout(const Duration(seconds: 5));
+        stopwatch.stop();
+        
+        if (response.statusCode == 200) {
+          return stopwatch.elapsedMilliseconds;
+        }
+        return -1;
+      } catch (e) {
+        print('VPN SERVICE: HTTP ping error: $e');
+        return -1;
+      }
     }
   }
 
@@ -484,6 +529,14 @@ class VpnService {
       print('VPN SERVICE: Get ping error: $e');
       return -1;
     }
+  }
+
+  /// Get network statistics (bytes received/sent) for Windows TUN interface
+  Future<Map<String, int>> getNetworkStats() async {
+    if (!_isWindows) {
+      return {'recv': 0, 'sent': 0};
+    }
+    return _getWindowsNetworkStats();
   }
 
   /// Measure speed (download/upload in Mbps)
@@ -511,6 +564,97 @@ class VpnService {
       print('VPN SERVICE: Speed test error: $e');
       return {'download': 0.0, 'upload': 0.0};
     }
+  }
+
+  /// Windows network stats using netsh command (reliable, no FFI offset guessing)
+  static Future<Map<String, int>> _getWindowsNetworkStats() async {
+    if (!Platform.isWindows) {
+      return {'recv': 0, 'sent': 0};
+    }
+    
+    try {
+      // Use netsh to get interface statistics
+      final result = await Process.run('netsh', ['interface', 'ipv4', 'show', 'subinterfaces'], 
+        runInShell: true,
+        stdoutEncoding: const SystemEncoding(),
+      );
+      
+      if (result.exitCode != 0) {
+        print('VPN SERVICE: netsh failed with exit code ${result.exitCode}');
+        return {'recv': 0, 'sent': 0};
+      }
+      
+      final output = result.stdout.toString();
+      print('VPN SERVICE: netsh output:\n$output');
+      
+      int totalRecv = 0;
+      int totalSent = 0;
+      
+      // Parse netsh output - format is:
+      // MTU  MediaSenseState   Bytes In   Bytes Out  Interface
+      // 1500                1  123456789  987654321  Ethernet
+      final lines = output.split('\n');
+      for (final line in lines) {
+        // Skip header lines and empty lines
+        if (line.contains('MTU') || line.contains('---') || line.trim().isEmpty) continue;
+        
+        // Parse data line - format: MTU  State  BytesIn  BytesOut  InterfaceName
+        final parts = line.trim().split(RegExp(r'\s+'));
+        if (parts.length >= 5) {
+          // Bytes In is 3rd column, Bytes Out is 4th column
+          final bytesInStr = parts[2].replaceAll(',', '');
+          final bytesOutStr = parts[3].replaceAll(',', '');
+          final interfaceName = parts.sublist(4).join(' ');
+          
+          final bytesIn = int.tryParse(bytesInStr) ?? 0;
+          final bytesOut = int.tryParse(bytesOutStr) ?? 0;
+          
+          print('VPN SERVICE: Interface "$interfaceName": in=$bytesIn, out=$bytesOut');
+          
+          // Sum all interfaces with traffic for now
+          if (bytesIn > 0 || bytesOut > 0) {
+            totalRecv += bytesIn;
+            totalSent += bytesOut;
+          }
+        }
+      }
+      
+      print('VPN SERVICE: Total stats - recv: $totalRecv, sent: $totalSent');
+      return {'recv': totalRecv, 'sent': totalSent};
+    } catch (e) {
+      print('VPN SERVICE: Error getting Windows network stats: $e');
+      return {'recv': 0, 'sent': 0};
+    }
+  }
+
+  /// Check current VPN status
+  Future<VpnStatus> checkStatus() async {
+    try {
+      if (_isWindows) {
+        final result = await _windowsChannel.invokeMethod<String>('getStatus');
+        return _parseWindowsStatus(result ?? 'disconnected');
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
+      } else {
+        final status = await VpnclientEngineFlutter.client.getConnectionStatus();
+        return _mapStatus(status);
+      }
+    } catch (e) {
+      print('VPN SERVICE: Check status error: $e');
+      return _currentStatus;
+    }
+  }
+
+  /// Copy Xray from assets (fallback method)
+  Future<bool> _copyXrayFromAssets() async {
+    // This method is deprecated - Xray is now downloaded from backend
+    // Keeping for backward compatibility
+    print('VPN SERVICE: _copyXrayFromAssets() called - deprecated, using downloader instead');
+    return await XrayDownloader.downloadAndVerifyXray();
   }
 
   /// Dispose resources

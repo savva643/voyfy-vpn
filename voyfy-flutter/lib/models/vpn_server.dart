@@ -55,4 +55,28 @@ class VpnServer {
   String toString() {
     return 'VpnServer(id: $id, name: $name, country: $country, host: $host)';
   }
+
+  VpnServer copyWith({
+    String? id,
+    String? name,
+    String? country,
+    String? countryCode,
+    String? host,
+    int? port,
+    bool? premium,
+    int? load,
+    String? vlessUrl,
+  }) {
+    return VpnServer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      country: country ?? this.country,
+      countryCode: countryCode ?? this.countryCode,
+      host: host ?? this.host,
+      port: port ?? this.port,
+      premium: premium ?? this.premium,
+      load: load ?? this.load,
+      vlessUrl: vlessUrl ?? this.vlessUrl,
+    );
+  }
 }

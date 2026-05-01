@@ -78,6 +78,107 @@ app.get('/api/subscription/:uuid', subscriptionController.getSubscriptionByUuid)
 // Server Routes (Public)
 // ==========================================
 app.get('/api/servers', serverController.getServers);
+
+// ==========================================
+// Xray Binary Routes (Public)
+// ==========================================
+const fs = require('fs');
+const path = require('path');
+
+const XRAY_BINARIES_DIR = path.join(__dirname, 'xray-binaries');
+
+// Map of platform-arch to binary filename
+const XRAY_BINARIES = {
+  'windows-amd64': 'xray-windows-64.exe',
+  'windows-arm64': 'xray-windows-arm64.exe',
+  'linux-amd64': 'xray-linux-64',
+  'linux-arm64': 'xray-linux-arm64-v8a',
+  'darwin-amd64': 'xray-darwin-64',      // macOS Intel
+  'darwin-arm64': 'xray-darwin-arm64',   // macOS Apple Silicon
+};
+
+// Download Xray binary
+app.get('/xray/download', (req, res) => {
+  const { platform, arch } = req.query;
+  
+  if (!platform || !arch) {
+    return res.status(400).json({ 
+      error: 'Missing parameters. Required: platform, arch' 
+    });
+  }
+  
+  const key = `${platform}-${arch}`;
+  const filename = XRAY_BINARIES[key];
+  
+  if (!filename) {
+    return res.status(404).json({ 
+      error: 'Binary not found for platform-arch combination',
+      supported: Object.keys(XRAY_BINARIES)
+    });
+  }
+  
+  const filePath = path.join(XRAY_BINARIES_DIR, filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ 
+      error: 'Binary file not found on server',
+      file: filename
+    });
+  }
+  
+  // Set headers for download
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', fs.statSync(filePath).size);
+  
+  // Stream file
+  const stream = fs.createReadStream(filePath);
+  stream.pipe(res);
+  
+  logger.info(`Xray binary downloaded: ${filename} (${platform}-${arch})`);
+});
+
+// Get binary checksum
+app.get('/xray/checksum', (req, res) => {
+  const { platform, arch } = req.query;
+  
+  if (!platform || !arch) {
+    return res.status(400).json({ 
+      error: 'Missing parameters. Required: platform, arch' 
+    });
+  }
+  
+  const key = `${platform}-${arch}`;
+  const filename = XRAY_BINARIES[key];
+  
+  if (!filename) {
+    return res.status(404).json({ 
+      error: 'Binary not found for platform-arch combination',
+      supported: Object.keys(XRAY_BINARIES)
+    });
+  }
+  
+  const filePath = path.join(XRAY_BINARIES_DIR, filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ 
+      error: 'Binary file not found on server' 
+    });
+  }
+  
+  // Calculate SHA256
+  const crypto = require('crypto');
+  const fileBuffer = fs.readFileSync(filePath);
+  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  
+  res.json({
+    platform,
+    arch,
+    filename,
+    sha256: hash,
+    size: fs.statSync(filePath).size,
+  });
+});
 app.get('/api/servers/:id', serverController.getServerById);
 
 // ==========================================

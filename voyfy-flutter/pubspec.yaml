@@ -38,11 +38,15 @@ dependencies:
   shared_preferences: ^2.2.3
   http: ^1.2.1
   archive: ^3.4.10
+  win32: ^5.5.0
   flutter_launcher_icons: ^0.13.1
   simple_gradient_text: ^1.4.0
   cached_network_image: ^3.3.1
   provider: ^6.1.2
-
+  system_tray: ^2.0.3
+  window_manager: ^0.3.7
+  crypto: ^3.0.3
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
@@ -90,10 +94,8 @@ flutter:
     - assets/images/
     - server/server.json
     - assets/translations/
-    - assets/xray/xray.exe
-    - assets/xray/geoip.dat
-    - assets/xray/geosite.dat
-    - assets/xray/wintun.dll
+    # Xray binaries are now downloaded from backend at runtime
+    # See lib/services/xray_downloader.dart
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

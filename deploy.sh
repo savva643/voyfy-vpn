@@ -142,6 +142,83 @@ echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
 echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
 echo "XRAY Short ID: $XRAY_SHORT_ID"
 
+# Step 4.5: Download Xray binaries for client distribution
+if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
+    echo "Step 4.5: Downloading Xray binaries for clients..."
+    
+    XRAY_BINARIES_DIR="$PROJECT_DIR/backend/src/xray-binaries"
+    mkdir -p "$XRAY_BINARIES_DIR"
+    cd "$XRAY_BINARIES_DIR"
+    
+    # Function to download and extract Xray
+    download_xray() {
+        local platform=$1
+        local arch=$2
+        local filename=$3
+        local url="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-${platform}-${arch}.zip"
+        
+        echo "Downloading Xray for ${platform}-${arch}..."
+        
+        if [ -f "$filename" ]; then
+            echo "  ${filename} already exists, skipping..."
+            return 0
+        fi
+        
+        wget -q --show-progress "$url" -O "temp_${platform}_${arch}.zip" 2>/dev/null || {
+            echo "  Failed to download ${platform}-${arch}, trying curl..."
+            curl -L -o "temp_${platform}_${arch}.zip" "$url" 2>/dev/null || {
+                echo "  ERROR: Could not download ${platform}-${arch}"
+                return 1
+            }
+        }
+        
+        # Extract and rename
+        unzip -q "temp_${platform}_${arch}.zip" 2>/dev/null || {
+            echo "  ERROR: Failed to extract ${platform}-${arch}"
+            rm -f "temp_${platform}_${arch}.zip"
+            return 1
+        }
+        
+        # Find and rename the binary
+        if [ -f "xray.exe" ]; then
+            mv xray.exe "$filename"
+        elif [ -f "xray" ]; then
+            mv xray "$filename"
+            chmod +x "$filename"
+        fi
+        
+        # Cleanup
+        rm -f "temp_${platform}_${arch}.zip"
+        rm -f geoip.dat geosite.dat 2>/dev/null
+        rm -f *.zip 2>/dev/null
+        rm -f README.md LICENSE 2>/dev/null
+        
+        if [ -f "$filename" ]; then
+            echo "  ${filename} downloaded successfully"
+            ls -lh "$filename"
+        else
+            echo "  ERROR: ${filename} not found after extraction"
+            return 1
+        fi
+    }
+    
+    # Download all platforms
+    download_xray "windows" "64" "xray-windows-64.exe"
+    download_xray "windows" "arm64" "xray-windows-arm64.exe" || echo "  Windows ARM64 not available, skipping..."
+    download_xray "linux" "64" "xray-linux-64"
+    download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a" || download_xray "linux" "arm64" "xray-linux-arm64-v8a"
+    download_xray "macos" "64" "xray-darwin-64"
+    download_xray "macos" "arm64-v8a" "xray-darwin-arm64" || download_xray "macos" "arm64" "xray-darwin-arm64"
+    
+    echo "Xray binaries download complete!"
+    echo "Available binaries:"
+    ls -lh "$XRAY_BINARIES_DIR/"
+    
+    cd "$PROJECT_DIR"
+else
+    echo "Step 4.5: Skipping Xray download (SKIP_XRAY_DOWNLOAD=true)"
+fi
+
 # Step 5: Create .env file for Docker
 echo "Step 5: Creating .env file..."
 cd docker

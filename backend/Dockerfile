@@ -12,6 +12,9 @@ RUN mkdir -p logs
 # Copy application code
 COPY src/ ./src/
 
+# Copy Xray binaries
+COPY xray-binaries/ ./src/xray-binaries/
+
 # Expose port
 EXPOSE 4000
 

@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpni/screens/splash_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/servers_provider.dart';
@@ -10,11 +12,17 @@ import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/vpn_provider.dart';
 import 'services/api_service.dart';
+import 'services/tray_manager.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
+
+  // Initialize window manager for desktop platforms
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await windowManager.ensureInitialized();
+  }
 
   // Initialize API service
   await ApiService.initialize();
@@ -57,11 +65,80 @@ class MyApp extends StatelessWidget {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,
-            home: const AppInitializer(),
+            home: const AppLifecycleHandler(child: AppInitializer()),
           );
         },
       ),
     );
+  }
+}
+
+/// App Lifecycle Handler
+/// - Initializes system tray on desktop
+/// - Checks VPN service status on resume
+/// - Handles app lifecycle for VPN
+class AppLifecycleHandler extends StatefulWidget {
+  final Widget child;
+
+  const AppLifecycleHandler({Key? key, required this.child}) : super(key: key);
+
+  @override
+  State<AppLifecycleHandler> createState() => _AppLifecycleHandlerState();
+}
+
+class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
+    with WidgetsBindingObserver {
+  bool _trayInitialized = false;
+  bool _statusCheckScheduled = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App resumed - check VPN service status
+      _checkServiceStatus();
+    }
+  }
+
+  void _checkServiceStatus() {
+    if (_statusCheckScheduled) return;
+    _statusCheckScheduled = true;
+    
+    // Delay slightly to let app fully resume
+    Future.delayed(Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      
+      final vpnProvider = context.read<VpnProvider>();
+      print('APP LIFECYCLE: Checking VPN service status on resume');
+      
+      // Check if service is actually running and sync UI state
+      vpnProvider.checkStatus();
+      
+      _statusCheckScheduled = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Initialize tray on first build for desktop
+    if (!_trayInitialized && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      _trayInitialized = true;
+      Future.delayed(Duration.zero, () {
+        TrayManager().initialize(context);
+      });
+    }
+    
+    return widget.child;
   }
 }
 

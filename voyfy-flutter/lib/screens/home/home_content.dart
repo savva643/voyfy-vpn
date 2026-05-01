@@ -13,13 +13,12 @@ class HomeContent extends StatelessWidget {
   final bool isConnecting;
   final bool isDisconnecting;
   final Duration duration;
-  final String pingResult;
-  final int bytesReceived;
-  final int bytesSent;
+  final int pingMs;
+  final int downloadSpeed;
+  final int uploadSpeed;
   final String Function(int) formatBytes;
   final String Function(Duration) formatDuration;
   final VoidCallback onToggleConnection;
-  final VoidCallback onCheckSpeed;
   final VoidCallback onChangeServer;
 
   const HomeContent({
@@ -32,13 +31,12 @@ class HomeContent extends StatelessWidget {
     this.isConnecting = false,
     this.isDisconnecting = false,
     required this.duration,
-    required this.pingResult,
-    required this.bytesReceived,
-    required this.bytesSent,
+    required this.pingMs,
+    required this.downloadSpeed,
+    required this.uploadSpeed,
     required this.formatBytes,
     required this.formatDuration,
     required this.onToggleConnection,
-    required this.onCheckSpeed,
     required this.onChangeServer,
   }) : super(key: key);
 
@@ -99,8 +97,8 @@ class HomeContent extends StatelessWidget {
                         child: StatCard(
                           icon: Icons.equalizer,
                           iconColor: Colors.orange,
-                          value: pingResult,
-                          unit: 'ms',
+                          value: pingMs > 0 ? '$pingMs' : '--',
+                          unit: pingMs > 0 ? 'ms' : '',
                           label: 'ping'.tr(),
                         ),
                       ),
@@ -109,10 +107,9 @@ class HomeContent extends StatelessWidget {
                         child: StatCard(
                           icon: Icons.arrow_downward,
                           iconColor: const Color(0xff20C4F8),
-                          value: formatBytes(bytesReceived),
-                          unit: '',
-                          label: 'received'.tr(),
-                          onTap: onCheckSpeed,
+                          value: downloadSpeed > 0 ? formatBytes(downloadSpeed) : '--',
+                          unit: downloadSpeed > 0 ? '/s' : '',
+                          label: 'download'.tr(),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -120,10 +117,9 @@ class HomeContent extends StatelessWidget {
                         child: StatCard(
                           icon: Icons.arrow_upward,
                           iconColor: const Color(0xff8220F9),
-                          value: formatBytes(bytesSent),
-                          unit: '',
-                          label: 'sent'.tr(),
-                          onTap: onCheckSpeed,
+                          value: uploadSpeed > 0 ? formatBytes(uploadSpeed) : '--',
+                          unit: uploadSpeed > 0 ? '/s' : '',
+                          label: 'upload'.tr(),
                         ),
                       ),
                     ],
@@ -208,27 +204,25 @@ class HomeContent extends StatelessWidget {
                         StatCard(
                           icon: Icons.equalizer,
                           iconColor: Colors.orange,
-                          value: pingResult,
-                          unit: 'ms',
+                          value: pingMs > 0 ? '$pingMs' : '--',
+                          unit: pingMs > 0 ? 'ms' : '',
                           label: 'ping'.tr(),
                           isDesktop: true,
                         ),
                         StatCard(
                           icon: Icons.arrow_downward,
                           iconColor: const Color(0xff20C4F8),
-                          value: formatBytes(bytesReceived),
-                          unit: '',
-                          label: 'received'.tr(),
-                          onTap: onCheckSpeed,
+                          value: downloadSpeed > 0 ? formatBytes(downloadSpeed) : '--',
+                          unit: downloadSpeed > 0 ? '/s' : '',
+                          label: 'download'.tr(),
                           isDesktop: true,
                         ),
                         StatCard(
                           icon: Icons.arrow_upward,
                           iconColor: const Color(0xff8220F9),
-                          value: formatBytes(bytesSent),
-                          unit: '',
-                          label: 'sent'.tr(),
-                          onTap: onCheckSpeed,
+                          value: uploadSpeed > 0 ? formatBytes(uploadSpeed) : '--',
+                          unit: uploadSpeed > 0 ? '/s' : '',
+                          label: 'upload'.tr(),
                           isDesktop: true,
                         ),
                         StatCard(
