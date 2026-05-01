@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Voyfy VPN Docker Deployment Script
-# Run this on your VPS: 185.164.163.166
+# Run this on your VPS
 
 set -e
 
@@ -15,9 +15,17 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Auto-detect server IP
+IP=$(hostname -I | awk '{print $1}')
+if [ -z "$IP" ]; then
+    IP=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[\d.]+')
+fi
+if [ -z "$IP" ]; then
+    IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null)
+fi
+
 # Configuration
 DOMAIN="vip.necsoura.ru"
-IP="185.164.163.166"
 PROJECT_DIR="/opt/voyfy-vpn"
 DOCKER_DIR="$PROJECT_DIR/docker"
 
