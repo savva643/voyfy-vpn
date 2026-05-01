@@ -70,7 +70,7 @@ fi
 # Step 2: Install Docker and dependencies
 if [ "$SKIP_DOCKER" = false ]; then
     echo "Step 2: Installing Docker and dependencies..."
-    apt install -y curl git ufw
+    apt install -y curl git ufw unzip
 
     # Remove old Docker versions if present
     apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
@@ -238,8 +238,9 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
     download_xray "linux" "arm64" "xray-linux-arm64" "Xray-linux-arm64.zip" || \
         download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a" "Xray-linux-arm64-v8a.zip" || \
         echo "  Linux ARM64 not available, skipping..."
-    download_xray "macos" "64" "xray-darwin-64"
-    download_xray "macos" "arm64-v8a" "xray-darwin-arm64" || download_xray "macos" "arm64" "xray-darwin-arm64"
+    download_xray "macos" "64" "xray-darwin-64" "Xray-darwin-64.zip"
+    download_xray "macos" "arm64-v8a" "xray-darwin-arm64" "Xray-darwin-arm64.zip" || \
+        download_xray "macos" "arm64" "xray-darwin-arm64" "Xray-darwin-arm64.zip"
     
     echo "Xray binaries download complete!"
     echo "Available binaries:"
