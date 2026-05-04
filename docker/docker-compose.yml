@@ -65,6 +65,7 @@ services:
       - ./nginx/ssl/fullchain.pem:/etc/nginx/ssl/cert.pem:ro
       - ./nginx/ssl/privkey.pem:/etc/nginx/ssl/key.pem:ro
       - ../frontend:/usr/share/nginx/html:ro
+      - ../backend/public/admin:/var/www/admin
       - ../vpn-server:/usr/share/nginx/vpn-server:ro
     ports:
       - "80:80"

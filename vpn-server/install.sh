@@ -69,13 +69,13 @@ PRIVATE_KEY=$(echo "$KEYS" | grep "PrivateKey:" | sed 's/PrivateKey: //' | tr -d
 PUBLIC_KEY=$(echo "$KEYS" | grep "Password (PublicKey):" | sed 's/Password (PublicKey): //' | tr -d ' ')
 SHORT_ID=$(openssl rand -hex 4)
 
-# IP адрес с fallback
-SERVER_IP=$(curl -s --max-time 10 ifconfig.me)
+# IP адрес с fallback (принудительно IPv4)
+SERVER_IP=$(curl -s --max-time 10 -4 ifconfig.me)
 if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(curl -s --max-time 10 icanhazip.com)
+    SERVER_IP=$(curl -s --max-time 10 -4 icanhazip.com)
 fi
 if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(hostname -I | awk '{print $1}')
+    SERVER_IP=$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 fi
 
 if [ -z "$SERVER_IP" ] || [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
@@ -154,12 +154,13 @@ if echo "$RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Сервер зарегистрирован: $SERVER_ID${NC}"
     
     # Конфиг и heartbeat
-    mkdir -p /opt/voyfy
-    echo "{\"serverId\": \"$SERVER_ID\", \"apiKey\": \"$API_KEY\", \"api\": {\"endpoint\": \"$API_ENDPOINT\"}}" > /opt/voyfy/config.json
-    
+    VOYFY_DIR="/opt/voyfy-vpn/vpn-server"
+    mkdir -p "$VOYFY_DIR"
+    echo "{\"serverId\": \"$SERVER_ID\", \"apiKey\": \"$API_KEY\", \"api\": {\"endpoint\": \"$API_ENDPOINT\"}}" > "$VOYFY_DIR/config.json"
+
     # Скачать heartbeat если доступен
-    curl -fsSL "$API_ENDPOINT/vpn-server/heartbeat.sh" -o /opt/voyfy/heartbeat.sh 2>/dev/null && chmod +x /opt/voyfy/heartbeat.sh
-    
+    curl -fsSL "$API_ENDPOINT/vpn-server/heartbeat.sh" -o "$VOYFY_DIR/heartbeat.sh" 2>/dev/null && chmod +x "$VOYFY_DIR/heartbeat.sh"
+
     # Сервис heartbeat
     cat > /etc/systemd/system/voyfy-heartbeat.service <<EOF
 [Unit]
@@ -168,8 +169,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/voyfy/heartbeat.sh
+ExecStart=/bin/bash $VOYFY_DIR/heartbeat.sh
 Restart=always
+RestartSec=60
 User=root
 
 [Install]

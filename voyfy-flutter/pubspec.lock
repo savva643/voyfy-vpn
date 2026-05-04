@@ -121,14 +121,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.9"
-  dart_ping:
-    dependency: transitive
-    description:
-      name: dart_ping
-      sha256: "2f5418d0a5c64e53486caaac78677b25725b1e13c33c5be834ce874ea18bd24f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.1"
   easy_localization:
     dependency: "direct main"
     description:
@@ -194,10 +186,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_lints
-      sha256: "3f41d009ba7172d5ff9be5f6e6e6abb4300e263aab8866d2a0842ed2a70f8f0c"
+      sha256: "3105dc8492f6183fb076ccf1f351ac3d60564bff92e20bfc4af9cc1651f4e7e1"
       url: "https://pub.dev"
     source: hosted
-    version: "4.0.0"
+    version: "6.0.0"
   flutter_localizations:
     dependency: transitive
     description: flutter
@@ -208,22 +200,30 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_v2ray:
-    dependency: transitive
-    description:
-      name: flutter_v2ray
-      sha256: "09dce3b4b58ea6a4220409d948a4d92a6eb3416184e6512ec0f5773fd48e5ab0"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.10"
-  flutter_vpnengine:
+  flutter_vless:
     dependency: "direct main"
     description:
-      name: flutter_vpnengine
-      sha256: "6902bdbe1c0539e930496dd41ebfbab85b1de8122179a5e832792efcd616e959"
+      name: flutter_vless
+      sha256: b17c096ed90e01e65269a8467e910ed84613ae05d4ae3dc4f0f35341c4a581b5
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.5+11"
+    version: "1.0.4"
+  flutter_vless_android:
+    dependency: transitive
+    description:
+      name: flutter_vless_android
+      sha256: "19ba2b4896fee994deb178b4d89e2648064f78c9b20af12583c57790c1118e0b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
+  flutter_vless_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_vless_platform_interface
+      sha256: "1035d723d4ef58efd3174d97b97d01db2eacf3cd9278c9fdf68d3e6ecb82fe16"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -329,10 +329,10 @@ packages:
     dependency: transitive
     description:
       name: lints
-      sha256: "976c774dd944a42e83e2467f4cc670daef7eed6295b10b36ae8c85bcbf828235"
+      sha256: "12f842a479589fea194fe5c5a3095abc7be0c1f2ddfa9a0e76aed1dbd26a87df"
       url: "https://pub.dev"
     source: hosted
-    version: "4.0.0"
+    version: "6.1.0"
   logging:
     dependency: transitive
     description:

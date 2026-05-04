@@ -5,10 +5,28 @@ import 'dart:ffi';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_vpnengine/vpnclient_engine_flutter.dart';
+import 'package:flutter_vless/flutter_vless.dart';
 import 'package:http/http.dart' as http;
 import 'package:archive/archive.dart';
 import 'xray_downloader.dart';
+
+/// Fix VLESS URL for IPv6 addresses (add brackets if missing)
+String _fixVlessUrl(String url) {
+  // Match vless://uuid@IPv6:port?... or vless://uuid@IPv6?...
+  // IPv6 address contains multiple colons, IPv4 contains max 1 colon for port separator
+  final ipv6Regex = RegExp(r'vless://([^@]+)@([0-9a-fA-F:]+:[0-9a-fA-F:]+)(:\d+)');
+  final match = ipv6Regex.firstMatch(url);
+  if (match != null) {
+    final host = match.group(2)!;
+    final port = match.group(3)!;
+    // Check if host is IPv6 (contains at least 2 colons and not already in brackets)
+    if (!host.startsWith('[') && host.contains(':')) {
+      // Replace with bracketed IPv6 + port outside: [ipv6]:port
+      return url.replaceFirst('@$host$port', '@[$host]$port');
+    }
+  }
+  return url;
+}
 
 /// VPN Status
 enum VpnStatus {
@@ -171,11 +189,12 @@ class VpnService {
         final result = await _macosChannel.invokeMethod<bool>('initialize');
         return result ?? false;
       } else {
-        // Use flutter_vpnengine for mobile (Android/iOS)
-        VpnclientEngineFlutter.instance.setStatusCallback((status) {
-          _updateStatus(_mapStatus(status));
-        });
-        await VpnclientEngineFlutter.instance.initialize();
+        // Use flutter_vless for mobile (Android/iOS)
+        _flutterVless = FlutterVless(onStatusChanged: _onVlessStatusChanged);
+        await _flutterVless!.initializeVless(
+          providerBundleIdentifier: 'com.voyfy.vpn.VPNProvider',
+          groupIdentifier: 'group.com.voyfy.vpn',
+        );
       }
       print('VPN SERVICE: Initialized');
       return true;
@@ -208,19 +227,52 @@ class VpnService {
     return _parseWindowsStatus(status);
   }
 
-  VpnStatus _mapStatus(ConnectionStatus status) {
-    switch (status) {
-      case ConnectionStatus.disconnected:
-        return VpnStatus.disconnected;
-      case ConnectionStatus.connecting:
-        return VpnStatus.connecting;
-      case ConnectionStatus.connected:
-        return VpnStatus.connected;
-      case ConnectionStatus.error:
-        return VpnStatus.error;
-      default:
-        return VpnStatus.disconnected;
+  FlutterVless? _flutterVless;
+
+  void _onVlessStatusChanged(VlessStatus status) {
+    // VlessStatus is a class, not an enum - parse from toString()
+    final statusStr = status.toString().toLowerCase();
+    print('VPN SERVICE: Raw VlessStatus: $status');
+    print('VPN SERVICE: VlessStatus toString: $statusStr');
+    
+    // Try to extract status from various possible formats
+    String parsedStatus = '';
+    
+    // Check if it's in format "VlessStatus.disconnected"
+    if (statusStr.contains('.')) {
+      final parts = statusStr.split('.');
+      final lastPart = parts.last.trim();
+      // Remove any trailing chars like ')' or ']'
+      parsedStatus = lastPart.replaceAll(RegExp(r'[^a-z]'), '');
+    } else {
+      // Direct string representation
+      parsedStatus = statusStr.replaceAll(RegExp(r'[^a-z]'), '');
     }
+    
+    print('VPN SERVICE: Parsed status: $parsedStatus');
+    
+    switch (parsedStatus) {
+      case 'disconnected':
+        _updateStatus(VpnStatus.disconnected);
+        break;
+      case 'connecting':
+        _updateStatus(VpnStatus.connecting);
+        break;
+      case 'connected':
+        _updateStatus(VpnStatus.connected);
+        break;
+      case 'error':
+        _updateStatus(VpnStatus.error);
+        break;
+      default:
+        print('VPN SERVICE: Unknown status "$parsedStatus", defaulting to disconnected');
+        _updateStatus(VpnStatus.disconnected);
+    }
+  }
+
+  VpnStatus _mapStatus(dynamic status) {
+    // Fallback for compatibility
+    return VpnStatus.disconnected;
   }
 
   /// Connect using VLESS/Xray config
@@ -265,13 +317,55 @@ class VpnService {
         return false;
       }
 
-      // Mobile platforms use flutter_vpnengine
-      final result = await VpnclientEngineFlutter.client.connect(EngineType.libxray, config);
-      
-      if (!result) {
+      // Mobile platforms use flutter_vless
+      try {
+        // Fix IPv6 address formatting if needed
+        final fixedConfig = _fixVlessUrl(config);
+        print('VPN SERVICE: Original URL: $config');
+        print('VPN SERVICE: Fixed URL: $fixedConfig');
+        
+        // Try to parse and log the config
+        FlutterVlessURL parsed;
+        String newConfig;
+        try {
+          parsed = FlutterVless.parseFromURL(fixedConfig);
+          newConfig = parsed.getFullConfiguration();
+          print('VPN SERVICE: Parsed remark: ${parsed.remark}');
+          print('VPN SERVICE: Config JSON length: ${newConfig.length}');
+          print('VPN SERVICE: Config JSON preview: ${newConfig.substring(0, newConfig.length > 500 ? 500 : newConfig.length)}...');
+        } catch (parseError) {
+          print('VPN SERVICE: Failed to parse URL: $parseError');
+          // Try with original URL as fallback
+          print('VPN SERVICE: Trying original URL without IPv6 fix...');
+          parsed = FlutterVless.parseFromURL(config);
+          newConfig = parsed.getFullConfiguration();
+        }
+        
+        final hasPermission = await _flutterVless?.requestPermission() ?? false;
+        print('VPN SERVICE: VPN permission: $hasPermission');
+        
+        if (hasPermission) {
+          print('VPN SERVICE: Calling startVless...');
+          await _flutterVless!.startVless(
+            remark: serverName ?? 'Voyfy Server',
+            config: newConfig,
+            blockedApps: null,
+            bypassSubnets: null,
+            proxyOnly: false,
+          );
+          print('VPN SERVICE: startVless completed successfully');
+          // Force status update since callback might not work
+          _updateStatus(VpnStatus.connected);
+          return true;
+        }
+        print('VPN SERVICE: No VPN permission');
+        return false;
+      } catch (e, stackTrace) {
+        print('VPN SERVICE: VLESS connection error: $e');
+        print('VPN SERVICE: Stack trace: $stackTrace');
         _updateStatus(VpnStatus.error);
+        return false;
       }
-      return result;
     } catch (e) {
       _updateStatus(VpnStatus.error);
       if (!_errorController.isClosed) {
@@ -301,7 +395,11 @@ class VpnService {
         return result ?? false;
       }
       
-      await VpnclientEngineFlutter.client.disconnect();
+      try {
+        await _flutterVless?.stopVless();
+      } catch (e) {
+        print('VPN SERVICE: VLESS disconnect error: $e');
+      }
       return true;
     } catch (e) {
       _updateStatus(VpnStatus.error);
@@ -370,7 +468,8 @@ class VpnService {
         });
         return result ?? -1;
       }
-      return await VpnclientEngineFlutter.client.ping(EngineType.libxray, config, url, timeout: timeout);
+      // flutter_v2ray doesn't have direct ping, use HTTP fallback
+      return await _pingHttpFallback(config);
     } catch (e) {
       print('VPN SERVICE: Ping error: $e');
       return -1;
@@ -405,6 +504,24 @@ class VpnService {
     return '8.8.8.8'; // Default fallback
   }
 
+  /// HTTP fallback ping for mobile platforms
+  Future<int> _pingHttpFallback(String config) async {
+    try {
+      final host = _extractHostFromConfig(config);
+      final stopwatch = Stopwatch()..start();
+      
+      // Try to connect to port 443 (HTTPS) - most servers have it open
+      final socket = await Socket.connect(host, 443, timeout: const Duration(seconds: 5));
+      await socket.close();
+      stopwatch.stop();
+      
+      return stopwatch.elapsedMilliseconds;
+    } catch (e) {
+      print('VPN SERVICE: HTTP fallback ping error: $e');
+      return -1;
+    }
+  }
+
   /// Test config
   Future<bool> testConfig(String config) async {
     try {
@@ -412,7 +529,13 @@ class VpnService {
         final result = await _windowsChannel.invokeMethod<bool>('testConfig', {'config': config});
         return result ?? false;
       }
-      return await VpnclientEngineFlutter.client.testConfig(EngineType.libxray, config);
+      // flutter_vless test via parsing
+      try {
+        FlutterVless.parseFromURL(config);
+        return true;
+      } catch (e) {
+        return false;
+      }
     } catch (e) {
       print('VPN SERVICE: Test config error: $e');
       return false;
@@ -426,8 +549,8 @@ class VpnService {
         final result = await _windowsChannel.invokeMethod<String>('getStatus');
         return _parseWindowsStatus(result ?? 'disconnected');
       }
-      final status = await VpnclientEngineFlutter.client.getConnectionStatus();
-      return _mapStatus(status);
+      // Check status via current status variable since flutter_vless doesn't expose isConnected
+      return _currentStatus;
     } catch (e) {
       return VpnStatus.disconnected;
     }
@@ -640,8 +763,8 @@ class VpnService {
         final result = await _macosChannel.invokeMethod<String>('getStatus');
         return _parseDesktopStatus(result ?? 'disconnected');
       } else {
-        final status = await VpnclientEngineFlutter.client.getConnectionStatus();
-        return _mapStatus(status);
+        // Check status via _currentStatus for flutter_vless
+        return _currentStatus;
       }
     } catch (e) {
       print('VPN SERVICE: Check status error: $e');

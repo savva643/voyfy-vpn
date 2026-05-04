@@ -83,7 +83,6 @@ app.get('/api/servers', serverController.getServers);
 // Xray Binary Routes (Public)
 // ==========================================
 const fs = require('fs');
-const path = require('path');
 
 const XRAY_BINARIES_DIR = path.join(__dirname, 'xray-binaries');
 
@@ -193,6 +192,8 @@ app.get('/api/user/profile', authenticate, userController.getProfile);
 app.post('/api/servers/register', serverController.registerServer);
 app.post('/api/servers/:id/heartbeat', serverController.serverHeartbeat);
 app.post('/api/servers/verify-code', serverController.verifyPairingCode);
+// Server sync - get clients list for Xray config
+app.get('/api/servers/:id/clients', serverController.getServerClients);
 
 // Admin server listing with full details
 app.get('/api/admin/servers', authenticate, requireAdmin, serverController.getAdminServers);

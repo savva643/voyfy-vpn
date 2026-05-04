@@ -89,6 +89,56 @@ get_stats() {
     echo "$load $connections $traffic_up $traffic_down"
 }
 
+# Синхронизация клиентов с backend
+sync_clients() {
+    # Получаем список клиентов от API
+    local response=$(curl -s -X GET "$API_ENDPOINT/api/servers/$SERVER_ID/clients" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $API_KEY" \
+        2>/dev/null)
+    
+    # Проверяем успешность запроса
+    if ! echo "$response" | jq -e '.success' >/dev/null 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to fetch clients from API"
+        return 1
+    fi
+    
+    # Извлекаем клиентов
+    local clients=$(echo "$response" | jq -r '.clients // []')
+    local client_count=$(echo "$clients" | jq 'length')
+    
+    if [ "$client_count" -eq 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] No active clients to sync"
+        return 0
+    fi
+    
+    # Читаем текущий конфиг
+    local config_file="/usr/local/etc/xray/config.json"
+    if [ ! -f "$config_file" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Xray config not found!"
+        return 1
+    fi
+    
+    # Сохраняем бэкап
+    cp "$config_file" "$config_file.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Создаем новый конфиг с обновленным clients массивом
+    local current_config=$(cat "$config_file")
+    local new_config=$(echo "$current_config" | jq --argjson new_clients "$clients" '.inbounds[0].settings.clients = $new_clients')
+    
+    if [ -n "$new_config" ]; then
+        echo "$new_config" > "$config_file"
+        
+        # Перезапускаем Xray только если конфиг изменился
+        systemctl reload xray 2>/dev/null || systemctl restart xray
+        
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Synced $client_count clients, Xray reloaded"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to update config"
+        return 1
+    fi
+}
+
 # Отправка heartbeat
 send_heartbeat() {
     local stats=$(get_stats)
@@ -108,10 +158,19 @@ send_heartbeat() {
 }
 
 # Первый запуск сразу
+sync_clients  # Sync clients on startup
 send_heartbeat
 
 # Основной цикл
+SYNC_COUNTER=0
 while true; do
     sleep 30
     send_heartbeat
+    
+    # Синхронизируем клиентов каждые 5 минут (10 циклов по 30 сек)
+    SYNC_COUNTER=$((SYNC_COUNTER + 1))
+    if [ $SYNC_COUNTER -ge 10 ]; then
+        sync_clients
+        SYNC_COUNTER=0
+    fi
 done

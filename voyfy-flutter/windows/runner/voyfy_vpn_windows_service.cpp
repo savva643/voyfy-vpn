@@ -67,6 +67,8 @@ static SERVICE_STATUS_HANDLE g_statusHandle = nullptr;
 static HANDLE g_stopEvent = nullptr;
 static HANDLE g_xrayProcess = nullptr;
 
+static std::string WStringToString(const std::wstring& wstr);
+
 static std::wstring GetModuleDir() {
     wchar_t path[MAX_PATH];
     DWORD len = GetModuleFileNameW(nullptr, path, MAX_PATH);
@@ -130,10 +132,19 @@ static bool WriteConfigFile(const std::string& configJson) {
         pos++;
     }
     
-    std::ofstream file(dir + L"\\config.json", std::ios::binary);
-    if (!file.is_open()) return false;
+    std::wstring configPath = dir + L"\\config.json";
+    std::ofstream file(configPath, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        AppendServiceLog("[service] ERROR: Cannot open config.json for writing");
+        return false;
+    }
     file << modifiedConfig;
     file.close();
+    
+    // Log the config content (first 500 chars) for debugging
+    AppendServiceLog("[service] Config content: " + modifiedConfig.substr(0, 500));
+    AppendServiceLog("[service] Config path: " + WStringToString(configPath));
+    
     return true;
 }
 
@@ -339,23 +350,25 @@ found:
 }
 
 static bool StartXray() {
-    // xray.exe should be in the same directory as the service executable
+    // xray.exe and wintun.dll are downloaded to data dir by XrayDownloader
     std::wstring moduleDir = GetModuleDir();
     std::wstring dataDir = GetDataDir();
     
-    std::wstring xrayPath = moduleDir + L"\\xray.exe";
-    std::wstring wintunPath = moduleDir + L"\\wintun.dll";
+    // Look for xray.exe and wintun.dll in dataDir (where XrayDownloader puts them)
+    std::wstring xrayPath = dataDir + L"\\xray.exe";
+    std::wstring wintunPath = dataDir + L"\\wintun.dll";
     std::wstring configPath = dataDir + L"\\config.json";
 
     AppendServiceLog("[service] Module dir: " + WStringToString(moduleDir));
     AppendServiceLog("[service] Data dir: " + WStringToString(dataDir));
+    AppendServiceLog("[service] Looking for xray.exe at: " + WStringToString(xrayPath));
 
     if (!FileExists(xrayPath)) {
-        AppendServiceLog("[service] xray.exe not found in module directory");
+        AppendServiceLog("[service] xray.exe not found in data directory");
         return false;
     }
     if (!FileExists(wintunPath)) {
-        AppendServiceLog("[service] wintun.dll not found in module directory");
+        AppendServiceLog("[service] wintun.dll not found in data directory");
         return false;
     }
     if (!FileExists(configPath)) {
@@ -450,22 +463,33 @@ static std::string HandleCommand(const std::string& cmdLine) {
     const std::string prefix = "CONNECT_JSON ";
     if (cmdLine.rfind(prefix, 0) == 0) {
         std::string json = cmdLine.substr(prefix.size());
+        AppendServiceLog("[service] CONNECT_JSON received, config length: " + std::to_string(json.length()));
+        
         StopXray();
+        AppendServiceLog("[service] Xray stopped (if was running)");
         
         // Write config first
+        AppendServiceLog("[service] Writing config file...");
         if (!WriteConfigFile(json)) {
+            AppendServiceLog("[service] ERROR: WriteConfigFile failed");
             return "ERR write_config";
         }
+        AppendServiceLog("[service] Config file written successfully");
         
         // Open firewall ports before starting VPN
+        AppendServiceLog("[service] Opening firewall ports...");
         OpenFirewallPorts();
+        AppendServiceLog("[service] Firewall ports opened");
         
         // Now start Xray (it will parse server IP from the written config file)
+        AppendServiceLog("[service] Starting Xray...");
         if (!StartXray()) {
+            AppendServiceLog("[service] ERROR: StartXray failed");
             CloseFirewallPorts();  // Close ports if Xray fails
             return "ERR start_xray";
         }
         
+        AppendServiceLog("[service] Xray started successfully, returning OK");
         return "OK";
     }
 

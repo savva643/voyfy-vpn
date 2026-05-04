@@ -554,12 +554,21 @@ static bool EnsureServiceRunning() {
 
 // Get app data directory
 std::wstring GetAppDataDir() {
+    // Keep this path in sync with the Windows service (VoyfyVpnService),
+    // which reads/writes its working files in C:\Users\Public\VoyfyVPN.
+    // Using Public avoids per-user separation and allows the service to see the same files.
+    std::wstring appPath = L"C:\\Users\\Public\\VoyfyVPN";
+    CreateDirectoryW(L"C:\\Users\\Public", nullptr);
+    CreateDirectoryW(appPath.c_str(), nullptr);
+    return appPath;
+}
+
+std::wstring GetLegacyUserAppDataDir() {
     wchar_t path[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, path))) {
-        std::wstring appPath = path;
-        appPath += L"\\VoyfyVPN";
-        CreateDirectoryW(appPath.c_str(), nullptr);
-        return appPath;
+        std::wstring legacyPath = path;
+        legacyPath += L"\\VoyfyVPN";
+        return legacyPath;
     }
     return L"";
 }
@@ -568,6 +577,55 @@ std::wstring GetAppDataDir() {
 std::string CreateXrayConfig(const std::string& vlessUrl) {
     // Parse vless://uuid@host:port?encryption=none&...#name
     std::string config = vlessUrl;
+
+    auto urlDecode = [](const std::string& in) -> std::string {
+        std::string out;
+        out.reserve(in.size());
+        for (size_t i = 0; i < in.size(); i++) {
+            const char c = in[i];
+            if (c == '%' && i + 2 < in.size()) {
+                auto hex = [](char ch) -> int {
+                    if (ch >= '0' && ch <= '9') return ch - '0';
+                    if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
+                    if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+                    return -1;
+                };
+                const int hi = hex(in[i + 1]);
+                const int lo = hex(in[i + 2]);
+                if (hi >= 0 && lo >= 0) {
+                    out.push_back(static_cast<char>((hi << 4) | lo));
+                    i += 2;
+                    continue;
+                }
+            }
+            out.push_back(c);
+        }
+        return out;
+    };
+
+    auto stripHash32Prefix = [](std::string s) -> std::string {
+        auto toLower = [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); };
+        std::string lower;
+        lower.reserve(s.size());
+        for (char ch : s) lower.push_back(toLower(static_cast<unsigned char>(ch)));
+        const std::string prefix = "hash32:";
+        if (lower.rfind(prefix, 0) == 0) {
+            return s.substr(prefix.size());
+        }
+        return s;
+    };
+
+    auto normalizeRealityPublicKey = [](std::string s) -> std::string {
+        // Xray Reality expects publicKey in base64url (raw, no padding) in most configs.
+        // Some panels provide a mixed alphabet like "+Mm-ZO3_b...".
+        // Normalize it to base64url: '+'->'-', '/'->'_', and strip '=' padding.
+        for (char& ch : s) {
+            if (ch == '+') ch = '-';
+            else if (ch == '/') ch = '_';
+        }
+        while (!s.empty() && s.back() == '=') s.pop_back();
+        return s;
+    };
     
     // Remove vless:// prefix
     if (config.find("vless://") == 0) {
@@ -588,36 +646,61 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
                              hPos != std::string::npos ? hPos : rest.size());
     
     std::string hostPort = rest.substr(0, endPos);
-    size_t colonPos = hostPort.find(':');
-    if (colonPos == std::string::npos) return "";
+    std::string host, port;
     
-    std::string host = hostPort.substr(0, colonPos);
-    std::string port = hostPort.substr(colonPos + 1);
+    // Check for bracketed IPv6 address: [ipv6]:port
+    if (hostPort.size() > 0 && hostPort[0] == '[') {
+        // Find closing bracket
+        size_t bracketEnd = hostPort.find(']');
+        if (bracketEnd == std::string::npos) return ""; // Invalid format
+        
+        // Extract IPv6 address without brackets
+        host = hostPort.substr(1, bracketEnd - 1);
+        
+        // Port should be after ]:port
+        if (bracketEnd + 1 < hostPort.size() && hostPort[bracketEnd + 1] == ':') {
+            port = hostPort.substr(bracketEnd + 2);
+        } else {
+            return ""; // No port specified after IPv6
+        }
+    } else {
+        // IPv4 or hostname: find last colon to separate host and port
+        size_t colonPos = hostPort.rfind(':');
+        if (colonPos == std::string::npos) return "";
+        
+        host = hostPort.substr(0, colonPos);
+        port = hostPort.substr(colonPos + 1);
+    }
     
     // Parse query parameters for Reality
     std::string pbk, sid, sni, fp = "chrome", security = "reality", flow = "";
-    
-    if (qPos != std::string::npos && hPos != std::string::npos && qPos < hPos) {
-        std::string query = rest.substr(qPos + 1, hPos - qPos - 1);
-        // Parse key=value pairs
-        size_t start = 0;
-        while (start < query.size()) {
-            size_t eqPos = query.find('=', start);
-            if (eqPos == std::string::npos) break;
-            size_t ampPos = query.find('&', eqPos);
-            if (ampPos == std::string::npos) ampPos = query.size();
-            
-            std::string key = query.substr(start, eqPos - start);
-            std::string value = query.substr(eqPos + 1, ampPos - eqPos - 1);
-            
-            if (key == "pbk") pbk = value;
-            else if (key == "sid") sid = value;
-            else if (key == "sni") sni = value;
-            else if (key == "fp") fp = value;
-            else if (key == "security") security = value;
-            else if (key == "flow") flow = value;
-            
-            start = ampPos + 1;
+
+    if (qPos != std::string::npos) {
+        const size_t queryEnd = (hPos != std::string::npos && qPos < hPos) ? hPos : rest.size();
+        if (qPos + 1 < queryEnd) {
+            std::string query = rest.substr(qPos + 1, queryEnd - (qPos + 1));
+            // Parse key=value pairs
+            size_t start = 0;
+            while (start < query.size()) {
+                size_t eqPos = query.find('=', start);
+                if (eqPos == std::string::npos) break;
+                size_t ampPos = query.find('&', eqPos);
+                if (ampPos == std::string::npos) ampPos = query.size();
+
+                std::string key = query.substr(start, eqPos - start);
+                std::string value = query.substr(eqPos + 1, ampPos - eqPos - 1);
+
+                // URL-decode Reality parameters (pbk often contains '%3A' etc.)
+                value = urlDecode(value);
+                if (key == "pbk") pbk = normalizeRealityPublicKey(stripHash32Prefix(value));
+                else if (key == "sid") sid = value;
+                else if (key == "sni") sni = value;
+                else if (key == "fp") fp = value;
+                else if (key == "security") security = value;
+                else if (key == "flow") flow = value;
+
+                start = ampPos + 1;
+            }
         }
     }
     
@@ -670,7 +753,8 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
         "ip": [")" + std::string(TUN_IP) + R"(/24"],
         "mtu": 1500,
         "autoRoute": true,
-        "strictRoute": true
+        "strictRoute": true,
+        "name": "xray0"
       }
     }
   ],
@@ -740,8 +824,8 @@ bool WriteConfigFile(const std::string& config) {
         return false;
     }
     
-    // Write config file
-    std::ofstream file(configPath, std::ios::binary);
+    // Write config file (truncate to ensure we always fully overwrite old configs)
+    std::ofstream file(configPath, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         OutputDebugStringW(L"[VPN] Failed to open config.json for writing\n");
         AppendNativeLog("[native] Failed to open config.json for writing");
@@ -1279,6 +1363,40 @@ void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
             std::wstring appDir = GetAppDataDir();
             std::wstring xrayPath = appDir + L"\\xray.exe";
             bool exists = FileExists(xrayPath);
+
+            if (!exists) {
+                // Migration: older builds stored files in per-user LOCALAPPDATA.
+                // If they exist there, copy them to the shared Public directory so the service can use them.
+                std::wstring legacyDir = GetLegacyUserAppDataDir();
+                if (!legacyDir.empty()) {
+                    std::wstring legacyXray = legacyDir + L"\\xray.exe";
+                    std::wstring legacyWintun = legacyDir + L"\\wintun.dll";
+                    std::wstring legacyGeoip = legacyDir + L"\\geoip.dat";
+                    std::wstring legacyGeosite = legacyDir + L"\\geosite.dat";
+
+                    bool copiedAny = false;
+                    if (FileExists(legacyXray)) {
+                        copiedAny |= (CopyFileW(legacyXray.c_str(), xrayPath.c_str(), FALSE) != 0);
+                    }
+                    if (FileExists(legacyWintun)) {
+                        std::wstring dst = appDir + L"\\wintun.dll";
+                        copiedAny |= (CopyFileW(legacyWintun.c_str(), dst.c_str(), FALSE) != 0);
+                    }
+                    if (FileExists(legacyGeoip)) {
+                        std::wstring dst = appDir + L"\\geoip.dat";
+                        copiedAny |= (CopyFileW(legacyGeoip.c_str(), dst.c_str(), FALSE) != 0);
+                    }
+                    if (FileExists(legacyGeosite)) {
+                        std::wstring dst = appDir + L"\\geosite.dat";
+                        copiedAny |= (CopyFileW(legacyGeosite.c_str(), dst.c_str(), FALSE) != 0);
+                    }
+
+                    if (copiedAny) {
+                        exists = FileExists(xrayPath);
+                        AppendNativeLog("[native] Migrated Xray files from LOCALAPPDATA to Public dir");
+                    }
+                }
+            }
             OutputDebugStringW((L"[VPN] checkAndDownloadXray: " + xrayPath + L" exists=" + std::to_wstring(exists) + L"\n").c_str());
             result->Success(flutter::EncodableValue(exists));
         }

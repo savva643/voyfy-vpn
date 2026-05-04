@@ -431,7 +431,7 @@ const getAdminServers = async (req, res) => {
     const result = await query(
       `SELECT id, name, country, country_code, host, port, premium,
               is_active, load_percentage, current_users, last_seen,
-              public_key, short_id, provider, created_at
+              public_key, short_id, provider, created_at, ping_ms
        FROM vpn_servers ORDER BY created_at DESC`,
       []
     );
@@ -453,7 +453,8 @@ const getAdminServers = async (req, res) => {
         publicKey: s.public_key,
         shortId: s.short_id,
         provider: s.provider,
-        createdAt: s.created_at
+        createdAt: s.created_at,
+        ping_ms: s.ping_ms
       }))
     });
   } catch (err) {
@@ -604,6 +605,68 @@ const verifyPairingCode = async (req, res) => {
   }
 };
 
+/**
+ * Get clients for a specific server (for Xray config sync)
+ * GET /api/servers/:id/clients
+ * VPN servers use this to sync user list
+ */
+const getServerClients = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verify server exists and is active
+    const serverResult = await query(
+      'SELECT id, host, public_key FROM vpn_servers WHERE id = $1 AND is_active = true',
+      [id]
+    );
+    
+    if (serverResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Server not found or inactive'
+      });
+    }
+    
+    const server = serverResult.rows[0];
+    
+    // Get all active users with valid subscription
+    const usersResult = await query(
+      `SELECT uuid, email 
+       FROM users 
+       WHERE is_active = true 
+         AND (expiry_date > NOW() OR expiry_date IS NULL)`,
+      []
+    );
+    
+    // Format clients for Xray
+    const clients = usersResult.rows.map(user => ({
+      id: user.uuid,
+      flow: 'xtls-rprx-vision',
+      email: user.email,
+    }));
+    
+    logger.info(`Server ${id} (${server.host}) synced ${clients.length} clients`);
+    
+    res.json({
+      success: true,
+      serverId: id,
+      clientCount: clients.length,
+      clients: clients,
+      // Also return server config for convenience
+      server: {
+        host: server.host,
+        publicKey: server.public_key,
+      }
+    });
+  } catch (err) {
+    logger.error('Get server clients error', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get server clients'
+    });
+  }
+};
+
 module.exports = {
   getServers,
   getServerById,
@@ -617,4 +680,5 @@ module.exports = {
   createPairingCode,
   getPairingCodes,
   verifyPairingCode,
+  getServerClients,
 };
