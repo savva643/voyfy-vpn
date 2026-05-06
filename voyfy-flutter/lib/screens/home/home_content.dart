@@ -51,7 +51,7 @@ class HomeContent extends StatelessWidget {
       children: [
         _buildHeader(context),
         SizedBox(
-          height: 240,
+          height: 200,
           child: ConnectionButton(
             isConnected: isConnected,
             isConnecting: isConnecting,

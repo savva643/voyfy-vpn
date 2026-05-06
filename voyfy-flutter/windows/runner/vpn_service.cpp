@@ -577,6 +577,9 @@ std::wstring GetLegacyUserAppDataDir() {
 std::string CreateXrayConfig(const std::string& vlessUrl) {
     // Parse vless://uuid@host:port?encryption=none&...#name
     std::string config = vlessUrl;
+    
+    // Log the input URL for debugging
+    AppendNativeLog("[native] CreateXrayConfig input URL: " + vlessUrl.substr(0, 200) + "...");
 
     auto urlDecode = [](const std::string& in) -> std::string {
         std::string out;
@@ -692,7 +695,10 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
 
                 // URL-decode Reality parameters (pbk often contains '%3A' etc.)
                 value = urlDecode(value);
-                if (key == "pbk") pbk = normalizeRealityPublicKey(stripHash32Prefix(value));
+                if (key == "pbk") {
+                    pbk = normalizeRealityPublicKey(stripHash32Prefix(value));
+                    AppendNativeLog("[native] Extracted pbk: " + pbk);
+                }
                 else if (key == "sid") sid = value;
                 else if (key == "sni") sni = value;
                 else if (key == "fp") fp = value;
@@ -750,7 +756,8 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
       "tag": "tun-in",
       "protocol": "tun",
       "settings": {
-        "ip": [")" + std::string(TUN_IP) + R"(/24"],
+        "ip": [")" + std::string(TUN_IP) + R"("],
+        "gateway": "10.0.0.1",
         "mtu": 1500,
         "autoRoute": true,
         "strictRoute": true,

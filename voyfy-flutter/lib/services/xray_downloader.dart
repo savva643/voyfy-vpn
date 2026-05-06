@@ -17,8 +17,23 @@ class XrayDownloader {
 
   /// Platform and architecture info
   static PlatformArchInfo get platformInfo {
-    final platform = Platform.operatingSystem; // windows, linux, macos
+    final rawPlatform = Platform.operatingSystem; // windows, linux, macos
     String arch;
+    
+    // Map platform names for backend API
+    // Backend expects: windows, linux, darwin (not macos)
+    String platform;
+    switch (rawPlatform) {
+      case 'macos':
+        platform = 'darwin';
+        break;
+      case 'windows':
+      case 'linux':
+        platform = rawPlatform;
+        break;
+      default:
+        platform = rawPlatform;
+    }
     
     // Detect architecture
     if (Platform.version.contains('arm64') || 
@@ -37,7 +52,7 @@ class XrayDownloader {
     return PlatformArchInfo(
       platform: platform,
       arch: arch,
-      extension: platform == 'windows' ? '.exe' : '',
+      extension: rawPlatform == 'windows' ? '.exe' : '',
       targetName: 'xray-${platform}-${arch}',
     );
   }

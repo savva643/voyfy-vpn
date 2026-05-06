@@ -25,11 +25,11 @@ class ConnectionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttonSize = isDesktop ? 200.0 : 160.0;
-    final innerSize = isDesktop ? 150.0 : 120.0;
-    final iconSize = isDesktop ? 50.0 : 40.0;
-    final fontSize = isDesktop ? 16.0 : 14.0;
-    final durationFontSize = isDesktop ? 36.0 : 28.0;
+    final buttonSize = isDesktop ? 200.0 : 130.0;
+    final innerSize = isDesktop ? 150.0 : 100.0;
+    final iconSize = isDesktop ? 50.0 : 36.0;
+    final fontSize = isDesktop ? 16.0 : 13.0;
+    final durationFontSize = isDesktop ? 36.0 : 22.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // Determine button state
@@ -113,9 +113,9 @@ class ConnectionButton extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             color: isDark ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.2),
             borderRadius: BorderRadius.circular(20),
@@ -157,7 +157,7 @@ class ConnectionButton extends StatelessWidget {
           ),
         ),
         if (isConnected && !isBusy) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             formatDuration(duration),
             style: TextStyle(
@@ -165,7 +165,7 @@ class ConnectionButton extends StatelessWidget {
               fontSize: durationFontSize,
               fontWeight: FontWeight.w300,
               fontFamily: 'Gilroy',
-              letterSpacing: 2,
+              letterSpacing: 1,
             ),
           ),
         ],

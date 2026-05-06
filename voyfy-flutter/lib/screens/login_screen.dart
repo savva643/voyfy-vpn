@@ -8,10 +8,12 @@ import 'package:flutter_vpni/screens/home_screen.dart';
 import 'package:flutter_vpni/screens/reg_screen.dart';
 import 'package:flutter_vpni/screens/twofa_screen.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
 
 import '../config/api_config.dart';
+import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,14 +42,24 @@ class _LoginScreenState extends State<LoginScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktopView = isDesktop;
     final isTabletView = isTablet;
-    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDarkMode = themeProvider.isDarkMode;
     
-    return Scaffold(
-      backgroundColor: isDarkMode ? kColorBgDark : kColorBg,
-      body: SafeArea(
-        child: isDesktopView || isTabletView
-            ? _buildDesktopLayout(size, isDarkMode)
-            : _buildMobileLayout(size, isDarkMode),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          // Exit app when back button pressed on login screen
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: isDarkMode ? kColorBgDark : kColorBg,
+        body: SafeArea(
+          child: isDesktopView || isTabletView
+              ? _buildDesktopLayout(size, isDarkMode)
+              : _buildMobileLayout(size, isDarkMode),
+        ),
       ),
     );
   }
@@ -425,7 +437,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   onTap: () async {
-                    Navigator.pushReplacement(
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const RegScreen(),

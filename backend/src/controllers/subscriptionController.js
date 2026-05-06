@@ -7,16 +7,19 @@ const logger = require('../utils/logger');
  * Format: vless://uuid@host:port?params#name
  */
 const buildVlessUrl = (userUuid, server, name) => {
+  // Remove Hash32: prefix from public_key if present
+  const publicKey = (server.public_key || config.server.publicKey).replace(/^Hash32:\s*/, '');
+  
   const params = new URLSearchParams({
     security: 'reality',
     encryption: 'none',
-    pbk: config.server.publicKey,
+    pbk: publicKey,
     headerType: 'none',
     fp: 'chrome',
     type: 'tcp',
     flow: 'xtls-rprx-vision',
     sni: config.server.serverName,
-    sid: config.server.shortId,
+    sid: server.short_id || config.server.shortId,
   });
   
   return `vless://${userUuid}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(name)}`;
@@ -239,10 +242,68 @@ const updateUsage = async (req, res) => {
   }
 };
 
+/**
+ * Get user's VLESS configuration for specific server
+ */
+const getUserConfig = async (userId, serverId) => {
+  try {
+    // Get user info
+    const userResult = await query(
+      'SELECT uuid FROM users WHERE id = $1 AND is_active = true',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return {
+        success: false,
+        message: 'User not found or inactive'
+      };
+    }
+    
+    const userUuid = userResult.rows[0].uuid;
+    
+    // Get server info
+    const serverResult = await query(
+      'SELECT * FROM vpn_servers WHERE id = $1 AND is_active = true',
+      [serverId]
+    );
+    
+    if (serverResult.rows.length === 0) {
+      return {
+        success: false,
+        message: 'Server not found or inactive'
+      };
+    }
+    
+    const server = serverResult.rows[0];
+    
+    // Generate VLESS URL using buildVlessUrl function (removes Hash32 prefix)
+    const vlessUrl = buildVlessUrl(userUuid, server, server.name || `${server.country}-${server.host}`);
+    
+    return {
+      success: true,
+      config: {
+        vlessUrl: vlessUrl,
+        serverId: server.id,
+        serverName: server.name || `${server.country}-${server.host}`,
+        host: server.host,
+        port: server.port
+      }
+    };
+  } catch (err) {
+    logger.error('Get user config error', err);
+    return {
+      success: false,
+      message: 'Failed to get configuration'
+    };
+  }
+};
+
 module.exports = {
-  getSubscription,
   getSubscriptionByUuid,
   getSubscriptionJson,
   updateUsage,
   generateSubscription,
+  getUserConfig,
+  buildVlessUrl,
 };

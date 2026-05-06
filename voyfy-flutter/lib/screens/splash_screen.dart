@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import 'package:flutter_vpni/screens/home_screen.dart';
 import 'package:flutter_vpni/screens/login_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../providers/theme_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -56,7 +59,8 @@ class _SplashScreenState extends State<SplashScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 900;
     final isTablet = size.width > 600 && size.width <= 900;
-    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDarkMode = themeProvider.isDarkMode;
     
     return Scaffold(
       backgroundColor: isDarkMode ? const Color(0xFF0B1220) : Colors.white,

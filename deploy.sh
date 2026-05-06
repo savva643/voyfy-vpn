@@ -262,10 +262,15 @@ else
     echo "Step 4.5: Skipping Xray download (SKIP_XRAY_DOWNLOAD=true)"
 fi
 
-# Step 5: Create .env file for Docker
+# Step 5: Create .env file for Docker (ONLY if it doesn't exist)
 echo "Step 5: Creating .env file..."
 cd docker
-cat > .env <<EOF
+
+if [ -f .env ]; then
+    echo "WARNING: .env file already exists, preserving existing configuration"
+    echo "To regenerate .env, delete it first: rm docker/.env"
+else
+    cat > .env <<EOF
 # Database Configuration
 DB_USER=voyfy
 DB_PASSWORD=$DB_PASSWORD
@@ -286,8 +291,8 @@ XRAY_API_PORT=10085
 # Admin API Key
 ADMIN_API_KEY=$ADMIN_API_KEY
 EOF
-
-echo "Docker .env created"
+    echo "Docker .env created"
+fi
 
 # Step 6: Setup SSL certificates
 if [ "$SKIP_SSL" = false ]; then

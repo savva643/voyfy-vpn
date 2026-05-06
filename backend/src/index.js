@@ -70,7 +70,6 @@ app.post('/api/auth/oauth/login', authController.externalLogin);
 app.use('/api/subscriptions', subscriptionRoutes);
 
 // Then: individual subscription endpoints
-app.get('/api/subscription', authenticate, subscriptionController.getSubscription);
 app.get('/api/subscription/json', authenticate, subscriptionController.getSubscriptionJson);
 app.get('/api/subscription/:uuid', subscriptionController.getSubscriptionByUuid);
 

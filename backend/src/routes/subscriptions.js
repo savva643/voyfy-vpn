@@ -293,21 +293,10 @@ router.get('/config/:serverId', authenticate, async (req, res) => {
     
     const server = serverResult.rows[0];
     const config = require('../config');
+    const { buildVlessUrl } = require('../controllers/subscriptionController');
     
-    // Build VLESS URL
-    const params = new URLSearchParams({
-      security: 'reality',
-      encryption: 'none',
-      pbk: config.server.publicKey,
-      headerType: 'none',
-      fp: 'chrome',
-      type: 'tcp',
-      flow: 'xtls-rprx-vision',
-      sni: config.server.serverName,
-      sid: config.server.shortId,
-    });
-    
-    const vlessUrl = `vless://${userUuid}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(server.name)}`;
+    // Build VLESS URL using buildVlessUrl function (removes Hash32 prefix)
+    const vlessUrl = buildVlessUrl(userUuid, server, server.name);
     
     res.json({
       success: true,

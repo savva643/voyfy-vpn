@@ -99,6 +99,10 @@ class VpnService {
 
   String? _currentConfig;
   String? _currentServerName;
+  
+  // Xray process for Linux/macOS
+  Process? _xrayProcess;
+  String? _xrayConfigPath;
 
   /// Initialize VPN
   Future<bool> initialize() async {
@@ -229,44 +233,42 @@ class VpnService {
 
   FlutterVless? _flutterVless;
 
+  // Store last known hashCodes for VlessStatus instances
+  static VpnStatus? _lastKnownStatus;
+  static int? _connectedHashCode;
+  static int? _disconnectedHashCode;
+  
   void _onVlessStatusChanged(VlessStatus status) {
-    // VlessStatus is a class, not an enum - parse from toString()
-    final statusStr = status.toString().toLowerCase();
-    print('VPN SERVICE: Raw VlessStatus: $status');
-    print('VPN SERVICE: VlessStatus toString: $statusStr');
+    // VlessStatus is a sealed class - use hashCode to identify status
+    final hashCode = status.hashCode;
+    final runtimeTypeStr = status.runtimeType.toString();
     
-    // Try to extract status from various possible formats
-    String parsedStatus = '';
+    print('VPN SERVICE: VlessStatus runtimeType: $runtimeTypeStr, hashCode: $hashCode');
     
-    // Check if it's in format "VlessStatus.disconnected"
-    if (statusStr.contains('.')) {
-      final parts = statusStr.split('.');
-      final lastPart = parts.last.trim();
-      // Remove any trailing chars like ')' or ']'
-      parsedStatus = lastPart.replaceAll(RegExp(r'[^a-z]'), '');
-    } else {
-      // Direct string representation
-      parsedStatus = statusStr.replaceAll(RegExp(r'[^a-z]'), '');
+    // Try to identify status based on hashCode patterns
+    // First time we see a hashCode, try to infer from context
+    if (_connectedHashCode == null && _currentStatus == VpnStatus.connected) {
+      _connectedHashCode = hashCode;
+      print('VPN SERVICE: Stored connected hashCode: $hashCode');
+    }
+    if (_disconnectedHashCode == null && _currentStatus == VpnStatus.disconnected) {
+      _disconnectedHashCode = hashCode;
+      print('VPN SERVICE: Stored disconnected hashCode: $hashCode');
     }
     
-    print('VPN SERVICE: Parsed status: $parsedStatus');
-    
-    switch (parsedStatus) {
-      case 'disconnected':
-        _updateStatus(VpnStatus.disconnected);
-        break;
-      case 'connecting':
-        _updateStatus(VpnStatus.connecting);
-        break;
-      case 'connected':
-        _updateStatus(VpnStatus.connected);
-        break;
-      case 'error':
-        _updateStatus(VpnStatus.error);
-        break;
-      default:
-        print('VPN SERVICE: Unknown status "$parsedStatus", defaulting to disconnected');
-        _updateStatus(VpnStatus.disconnected);
+    // Use stored hashCodes to determine status
+    if (hashCode == _connectedHashCode) {
+      print('VPN SERVICE: Status identified as CONNECTED via hashCode');
+      _updateStatus(VpnStatus.connected);
+    } else if (hashCode == _disconnectedHashCode) {
+      print('VPN SERVICE: Status identified as DISCONNECTED via hashCode');
+      _updateStatus(VpnStatus.disconnected);
+    } else if (hashCode == _connectedHashCode) {
+      // Same hashCode as connected
+      _updateStatus(VpnStatus.connected);
+    } else {
+      // Unknown hashCode - don't change status to avoid flickering
+      print('VPN SERVICE: Unknown VlessStatus hashCode: $hashCode, keeping current status: $_currentStatus');
     }
   }
 
@@ -303,16 +305,9 @@ class VpnService {
           final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
           print('VPN SERVICE: Windows connect returned: $result');
           return result ?? false;
-        } else if (_isLinux) {
-          print('VPN SERVICE: Calling Linux connect...');
-          final result = await _linuxChannel.invokeMethod<bool>('connect', {'config': config});
-          print('VPN SERVICE: Linux connect returned: $result');
-          return result ?? false;
-        } else if (_isMacOS) {
-          print('VPN SERVICE: Calling macOS connect...');
-          final result = await _macosChannel.invokeMethod<bool>('connect', {'config': config});
-          print('VPN SERVICE: macOS connect returned: $result');
-          return result ?? false;
+        } else if (_isLinux || _isMacOS) {
+          print('VPN SERVICE: Starting xray on Linux/macOS...');
+          return await _connectDesktopLinuxMacOS(config);
         }
         return false;
       }
@@ -387,16 +382,13 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<bool>('disconnect');
         return result ?? false;
-      } else if (_isLinux) {
-        final result = await _linuxChannel.invokeMethod<bool>('disconnect');
-        return result ?? false;
-      } else if (_isMacOS) {
-        final result = await _macosChannel.invokeMethod<bool>('disconnect');
-        return result ?? false;
+      } else if (_isLinux || _isMacOS) {
+        return await _disconnectDesktopLinuxMacOS();
       }
       
       try {
         await _flutterVless?.stopVless();
+        _updateStatus(VpnStatus.disconnected);
       } catch (e) {
         print('VPN SERVICE: VLESS disconnect error: $e');
       }
@@ -432,22 +424,41 @@ class VpnService {
     }
   }
 
-  /// Ensure xray.exe exists on Windows
+  /// Ensure xray binary exists for desktop platforms
   Future<bool> _ensureXrayExists() async {
     print('VPN SERVICE: _ensureXrayExists() started');
     try {
-      // Check if xray exists via native code
-      print('VPN SERVICE: Calling checkAndDownloadXray...');
-      final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
-      print('VPN SERVICE: checkAndDownloadXray returned: $result');
-      if (result == true) {
-        print('VPN SERVICE: Xray already exists');
-        return true;
+      // For Windows, use native channel
+      if (_isWindows) {
+        print('VPN SERVICE: Checking xray via Windows native channel...');
+        final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
+        print('VPN SERVICE: checkAndDownloadXray returned: $result');
+        if (result == true) {
+          print('VPN SERVICE: Xray already exists');
+          return true;
+        }
+        // Fallback to XrayDownloader
+        return await _copyXrayFromAssets();
       }
       
-      // Xray not found, copy from assets
-      print('VPN SERVICE: Xray not found, copying from assets...');
-      return await _copyXrayFromAssets();
+      // For Linux/macOS, use XrayDownloader directly
+      if (_isLinux || _isMacOS) {
+        print('VPN SERVICE: Checking xray for Linux/macOS...');
+        final downloader = XrayDownloader();
+        
+        // Check if exists
+        if (await downloader.isBinaryExists()) {
+          print('VPN SERVICE: Xray already exists');
+          return true;
+        }
+        
+        // Download
+        print('VPN SERVICE: Xray not found, downloading...');
+        final path = await downloader.downloadAndVerify();
+        return path != null;
+      }
+      
+      return false;
     } catch (e, stackTrace) {
       print('VPN SERVICE: Xray check error: $e');
       print('VPN SERVICE: Stack trace: $stackTrace');
@@ -621,22 +632,29 @@ class VpnService {
         return -1;
       }
     } else {
-      // Fallback to HTTP ping on other platforms
+      // Android/iOS: Use HTTP ping through VPN tunnel
+      // If VPN is connected, HTTP request will go through the tunnel
       try {
         final stopwatch = Stopwatch()..start();
-        final isIp = RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
-        final protocol = isIp ? 'http' : 'https';
-        final response = await http.get(
-          Uri.parse('$protocol://$host/health'),
-        ).timeout(const Duration(seconds: 5));
-        stopwatch.stop();
         
-        if (response.statusCode == 200) {
-          return stopwatch.elapsedMilliseconds;
-        }
-        return -1;
+        // Use HTTP HEAD request to Cloudflare - lightweight and reliable
+        // If VPN works, this will succeed; if not, it will fail
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3)
+          ..badCertificateCallback = (cert, host, port) => true;
+        
+        final request = await client.headUrl(Uri.parse('http://1.1.1.1/'))
+          .timeout(const Duration(seconds: 3));
+        request.followRedirects = false;
+        
+        final response = await request.close().timeout(const Duration(seconds: 3));
+        stopwatch.stop();
+        client.close();
+        
+        print('VPN SERVICE: HTTP ping through VPN: ${stopwatch.elapsedMilliseconds}ms (status: ${response.statusCode})');
+        return stopwatch.elapsedMilliseconds;
       } catch (e) {
-        print('VPN SERVICE: HTTP ping error: $e');
+        print('VPN SERVICE: HTTP ping error (VPN may not be routing): $e');
         return -1;
       }
     }
@@ -654,12 +672,15 @@ class VpnService {
     }
   }
 
-  /// Get network statistics (bytes received/sent) for Windows TUN interface
+  /// Get network statistics (bytes received/sent) 
   Future<Map<String, int>> getNetworkStats() async {
-    if (!_isWindows) {
-      return {'recv': 0, 'sent': 0};
+    if (_isWindows) {
+      return _getWindowsNetworkStats();
     }
-    return _getWindowsNetworkStats();
+    
+    // Android/iOS: Stats not available without native plugin support
+    // Return 0,0 - speed will be measured via HTTP test instead
+    return {'recv': 0, 'sent': 0};
   }
 
   /// Measure speed (download/upload in Mbps)
@@ -756,12 +777,21 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<String>('getStatus');
         return _parseWindowsStatus(result ?? 'disconnected');
-      } else if (_isLinux) {
-        final result = await _linuxChannel.invokeMethod<String>('getStatus');
-        return _parseDesktopStatus(result ?? 'disconnected');
-      } else if (_isMacOS) {
-        final result = await _macosChannel.invokeMethod<String>('getStatus');
-        return _parseDesktopStatus(result ?? 'disconnected');
+      } else if (_isLinux || _isMacOS) {
+        // Check if xray process is still running
+        if (_xrayProcess != null) {
+          try {
+            // Try to get exit code - if not null, process has exited
+            // For detached process, we need to check differently
+            final result = await Process.run('pgrep', ['-f', 'xray.*voyfy']);
+            if (result.exitCode == 0) {
+              return VpnStatus.connected;
+            }
+          } catch (e) {
+            print('VPN SERVICE: Error checking xray process: $e');
+          }
+        }
+        return _currentStatus;
       } else {
         // Check status via _currentStatus for flutter_vless
         return _currentStatus;
@@ -806,6 +836,127 @@ class VpnService {
   void _updateDataUsage(DataUsage usage) {
     if (!_dataUsageController.isClosed) {
       _dataUsageController.add(usage);
+    }
+  }
+  
+  /// Connect on Linux/macOS desktop using xray directly
+  Future<bool> _connectDesktopLinuxMacOS(String vlessUrl) async {
+    try {
+      // Kill any existing xray process
+      await _disconnectDesktopLinuxMacOS();
+      
+      // Get xray binary path from XrayDownloader
+      final downloader = XrayDownloader();
+      final xrayPath = await downloader.binaryPath;
+      
+      print('VPN SERVICE: Expected xray path: $xrayPath');
+      
+      // Ensure xray exists - download if needed
+      final xrayFile = File(xrayPath);
+      if (!await xrayFile.exists()) {
+        print('VPN SERVICE: xray not found at $xrayPath, downloading...');
+        
+        // Download xray using XrayDownloader
+        final downloadedPath = await downloader.downloadAndVerify();
+        
+        if (downloadedPath == null) {
+          print('VPN SERVICE: Failed to download xray');
+          _errorController.add(VpnError(
+            type: 'xray_not_found',
+            message: 'Failed to download Xray binary for ${_isMacOS ? "macOS" : "Linux"}',
+          ));
+          _updateStatus(VpnStatus.error);
+          return false;
+        }
+        
+        print('VPN SERVICE: xray downloaded to: $downloadedPath');
+      }
+      
+      // Make executable (just in case)
+      await Process.run('chmod', ['+x', xrayPath]);
+      
+      // Parse VLESS URL and create config
+      final parsed = FlutterVless.parseFromURL(vlessUrl);
+      final configJson = parsed.getFullConfiguration();
+      
+      // Write config to temp file
+      final tempDir = Directory.systemTemp;
+      final configFile = File('${tempDir.path}/voyfy_vpn_config.json');
+      await configFile.writeAsString(configJson);
+      _xrayConfigPath = configFile.path;
+      
+      print('VPN SERVICE: Starting xray with config: ${_xrayConfigPath}');
+      
+      // Start xray process
+      _xrayProcess = await Process.start(
+        xrayPath,
+        ['-c', _xrayConfigPath!],
+        mode: ProcessStartMode.detached,
+      );
+      
+      print('VPN SERVICE: xray started with PID: ${_xrayProcess?.pid}');
+      
+      // Wait a moment for xray to initialize
+      await Future.delayed(const Duration(seconds: 2));
+      
+      // Check if process is still running
+      // Note: detached process doesn't allow easy exitCode check
+      // We'll assume it's running and let ping test verify
+      
+      _updateStatus(VpnStatus.connected);
+      return true;
+      
+    } catch (e) {
+      print('VPN SERVICE: Linux/macOS connect error: $e');
+      _errorController.add(VpnError(
+        type: 'connection_error',
+        message: 'Failed to start xray on Linux/macOS',
+        details: e.toString(),
+      ));
+      _updateStatus(VpnStatus.error);
+      return false;
+    }
+  }
+  
+  /// Disconnect on Linux/macOS desktop
+  Future<bool> _disconnectDesktopLinuxMacOS() async {
+    try {
+      print('VPN SERVICE: Disconnecting Linux/macOS...');
+      
+      // Kill xray process
+      if (_xrayProcess != null) {
+        print('VPN SERVICE: Killing xray process...');
+        _xrayProcess!.kill();
+        _xrayProcess = null;
+      }
+      
+      // Also try to kill any orphaned xray processes
+      if (_isMacOS) {
+        await Process.run('pkill', ['-f', 'xray']);
+      } else {
+        await Process.run('pkill', ['-f', 'xray']);
+      }
+      
+      // Clean up temp config
+      if (_xrayConfigPath != null) {
+        try {
+          final configFile = File(_xrayConfigPath!);
+          if (await configFile.exists()) {
+            await configFile.delete();
+          }
+        } catch (e) {
+          print('VPN SERVICE: Error deleting temp config: $e');
+        }
+        _xrayConfigPath = null;
+      }
+      
+      _updateStatus(VpnStatus.disconnected);
+      print('VPN SERVICE: Linux/macOS disconnected');
+      return true;
+      
+    } catch (e) {
+      print('VPN SERVICE: Linux/macOS disconnect error: $e');
+      return false;
     }
   }
 }

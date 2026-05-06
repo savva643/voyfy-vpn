@@ -253,7 +253,8 @@ class VpnProvider extends ChangeNotifier {
           vlessUrl = data['config']['vlessUrl'] as String?;
           // Save vlessUrl to selectedServer for later use (ping, etc.)
           _selectedServer = _selectedServer!.copyWith(vlessUrl: vlessUrl);
-          print('VPN PROVIDER: Got vlessUrl: ${vlessUrl?.substring(0, vlessUrl!.length.clamp(0, 50))}...');
+          print('VPN PROVIDER: Got vlessUrl: $vlessUrl');
+          print('VPN PROVIDER: Extracted pbk: ${Uri.parse(vlessUrl!).queryParameters['pbk']}');
           print('VPN PROVIDER: Saved vlessUrl to selectedServer');
         }
       }
@@ -336,44 +337,59 @@ class VpnProvider extends ChangeNotifier {
     _pingMs = 0;
   }
   
-  /// Start speed calculation using FFI
+  /// Start speed calculation using network stats (Windows) or active test (Android/iOS)
   void _startSpeedTimer() {
-    print('VPN PROVIDER: Starting speed timer (FFI mode)');
+    print('VPN PROVIDER: Starting speed timer');
     _speedTimer?.cancel();
     _lastDataUsage = null;
     _lastSpeedUpdate = null;
-    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+    _speedTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       if (!isConnected) return;
       
-      print('VPN PROVIDER: Speed timer tick - getting stats via FFI');
       try {
-        // Use FFI to get network stats directly from Windows API
+        // Try network stats first (Windows)
         final stats = await _vpnService.getNetworkStats();
         final recv = stats['recv'] ?? 0;
         final sent = stats['sent'] ?? 0;
         
-        print('VPN PROVIDER: FFI stats - recv: $recv, sent: $sent');
+        print('VPN PROVIDER: Stats - recv: $recv, sent: $sent');
         
-        // Update data usage
-        _dataUsage = DataUsage(bytesReceived: recv, bytesSent: sent);
-        
-        // Calculate speed
-        final now = DateTime.now();
-        if (_lastDataUsage != null && _lastSpeedUpdate != null) {
-          final timeDiff = now.difference(_lastSpeedUpdate!).inSeconds;
-          if (timeDiff > 0) {
-            final bytesDiffDown = recv - _lastDataUsage!.bytesReceived;
-            final bytesDiffUp = sent - _lastDataUsage!.bytesSent;
-            _downloadSpeed = (bytesDiffDown / timeDiff).round();
-            _uploadSpeed = (bytesDiffUp / timeDiff).round();
-            print('VPN PROVIDER: Speed updated - Down: $_downloadSpeed, Up: $_uploadSpeed');
+        // If we have real stats (Windows), calculate speed from them
+        if (recv > 0 || sent > 0) {
+          _dataUsage = DataUsage(bytesReceived: recv, bytesSent: sent);
+          
+          final now = DateTime.now();
+          if (_lastDataUsage != null && _lastSpeedUpdate != null) {
+            final timeDiff = now.difference(_lastSpeedUpdate!).inSeconds;
+            if (timeDiff > 0) {
+              final bytesDiffDown = recv - _lastDataUsage!.bytesReceived;
+              final bytesDiffUp = sent - _lastDataUsage!.bytesSent;
+              _downloadSpeed = (bytesDiffDown / timeDiff).round();
+              _uploadSpeed = (bytesDiffUp / timeDiff).round();
+              print('VPN PROVIDER: Speed from stats - Down: $_downloadSpeed, Up: $_uploadSpeed');
+              notifyListeners();
+            }
+          }
+          _lastDataUsage = _dataUsage;
+          _lastSpeedUpdate = now;
+        } else {
+          // Android/iOS: Use active speed test every 10 seconds
+          // This measures actual VPN performance
+          if (_lastSpeedUpdate == null || 
+              DateTime.now().difference(_lastSpeedUpdate!).inSeconds >= 10) {
+            print('VPN PROVIDER: Running active speed test...');
+            final speedResult = await _vpnService.measureSpeed();
+            final downloadMbps = speedResult['download'] ?? 0.0;
+            // Convert Mbps to bytes/sec for display consistency
+            _downloadSpeed = (downloadMbps * 125000).round(); // Mbps * 1000000 / 8
+            _uploadSpeed = 0; // Upload test not implemented
+            print('VPN PROVIDER: Active speed test - Down: $downloadMbps Mbps');
             notifyListeners();
+            _lastSpeedUpdate = DateTime.now();
           }
         }
-        _lastDataUsage = _dataUsage;
-        _lastSpeedUpdate = now;
       } catch (e) {
-        print('VPN PROVIDER: Error getting stats via FFI: $e');
+        print('VPN PROVIDER: Error getting speed: $e');
       }
     });
   }

@@ -5,11 +5,13 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vpni/screens/login_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../providers/theme_provider.dart';
 import 'home_screen.dart';
 import '../services/api_service.dart';
 
@@ -47,7 +49,8 @@ class _RegScreenState extends State<RegScreen> {
     final size = MediaQuery.of(context).size;
     final isDesktopView = isDesktop;
     final isTabletView = isTablet;
-    final isDarkMode = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDarkMode = themeProvider.isDarkMode;
 
     return Scaffold(
       backgroundColor: isDarkMode ? kColorBgDark : kColorBg,
@@ -346,12 +349,7 @@ class _RegScreenState extends State<RegScreen> {
           const SizedBox(height: 16),
           TextButton(
             onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LoginScreen(),
-                ),
-              );
+              Navigator.pop(context);
             },
             child: Text(
               'Already have an account? Log in',

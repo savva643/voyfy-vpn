@@ -103,11 +103,30 @@ cat > /usr/local/etc/xray/config.json <<XRAYEOF
       }
     },
     "sniffing": {"enabled": true, "destOverride": ["http", "tls", "quic"]}
+  },
+  {
+    "tag": "tun-in",
+    "protocol": "tun",
+    "settings": {
+      "ip": ["10.0.0.1/30"],
+      "mtu": 1500,
+      "autoRoute": true,
+      "strictRoute": true
+    }
   }],
   "outbounds": [
     {"protocol": "freedom", "tag": "direct"},
     {"protocol": "blackhole", "tag": "block"}
-  ]
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["tun-in"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
 }
 XRAYEOF
 
