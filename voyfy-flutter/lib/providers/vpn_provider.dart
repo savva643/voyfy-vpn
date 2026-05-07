@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import '../models/vpn_server.dart';
+import '../providers/settings_provider.dart';
 import '../services/vpn_service.dart';
 import '../services/tray_manager.dart';
 
@@ -13,6 +15,9 @@ import '../services/tray_manager.dart';
 /// Manages VPN connection state and server selection
 class VpnProvider extends ChangeNotifier {
   final VpnService _vpnService = VpnService();
+  
+  /// Public getter for VPN service (used by tray manager)
+  VpnService get vpnService => _vpnService;
   
   // Connection state
   VpnStatus _status = VpnStatus.disconnected;
@@ -93,7 +98,18 @@ class VpnProvider extends ChangeNotifier {
   // Subscriptions
   StreamSubscription<VpnStatus>? _statusSubscription;
   StreamSubscription<VpnError>? _errorSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _durationTimer;
+  
+  // Last saved config for retry
+  String? _lastVlessUrl;
+  String? _lastServerId;
+  bool _wasDisconnected = false;
+  
+  // Last split tunneling settings for reconnect
+  List<String>? _lastBlockedApps;
+  bool _lastRouteAllTraffic = true;
+  bool _lastWhitelistBypass = false;
   
   // Initialization state
   bool _isInitializing = false;
@@ -140,9 +156,134 @@ class VpnProvider extends ChangeNotifier {
       notifyListeners();
     });
     
+    // Load last saved config
+    await _loadLastConfig();
+    
+    // Listen to connectivity changes for auto-reconnect
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+    
     _isInitializing = false;
     _isInitialized = true;
     print('VPN PROVIDER: Initialization complete');
+  }
+  
+  /// Load last saved VLESS config from SharedPreferences
+  Future<void> _loadLastConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _lastVlessUrl = prefs.getString('last_vless_url');
+      _lastServerId = prefs.getString('last_server_id');
+      _lastBlockedApps = prefs.getStringList('last_blocked_apps');
+      _lastRouteAllTraffic = prefs.getBool('last_route_all_traffic') ?? true;
+      _lastWhitelistBypass = prefs.getBool('last_whitelist_bypass') ?? false;
+      print('VPN PROVIDER: Loaded last config - serverId: $_lastServerId, url: ${_lastVlessUrl?.substring(0, _lastVlessUrl!.length.clamp(0, 30))}..., routeAllTraffic: $_lastRouteAllTraffic, whitelistBypass: $_lastWhitelistBypass');
+    } catch (e) {
+      print('VPN PROVIDER: Error loading last config: $e');
+    }
+  }
+  
+  /// Save VLESS config to SharedPreferences
+  Future<void> _saveLastConfig(String vlessUrl, String serverId, {List<String>? blockedApps, bool routeAllTraffic = true, bool whitelistBypass = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_vless_url', vlessUrl);
+      await prefs.setString('last_server_id', serverId);
+      if (blockedApps != null) {
+        await prefs.setStringList('last_blocked_apps', blockedApps);
+      }
+      await prefs.setBool('last_route_all_traffic', routeAllTraffic);
+      await prefs.setBool('last_whitelist_bypass', whitelistBypass);
+      _lastVlessUrl = vlessUrl;
+      _lastServerId = serverId;
+      _lastBlockedApps = blockedApps;
+      _lastRouteAllTraffic = routeAllTraffic;
+      _lastWhitelistBypass = whitelistBypass;
+      print('VPN PROVIDER: Saved last config - serverId: $serverId, routeAllTraffic: $routeAllTraffic, whitelistBypass: $whitelistBypass');
+    } catch (e) {
+      print('VPN PROVIDER: Error saving last config: $e');
+    }
+  }
+  
+  /// Handle connectivity changes for auto-reconnect
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    final hasConnection = results.isNotEmpty && 
+                         !results.contains(ConnectivityResult.none);
+    
+    print('VPN PROVIDER: Connectivity changed - $results, hasConnection: $hasConnection, wasDisconnected: $_wasDisconnected');
+    
+    if (hasConnection && _wasDisconnected && isConnected) {
+      // Network restored while VPN was connected - need to reconnect
+      print('VPN PROVIDER: Network restored, reconnecting VPN...');
+      _wasDisconnected = false;
+      _reconnect();
+    } else if (!hasConnection) {
+      // Network lost - mark for reconnect when restored
+      if (isConnected) {
+        print('VPN PROVIDER: Network lost, will reconnect when restored');
+        _wasDisconnected = true;
+      }
+    }
+  }
+  
+  /// Reconnect VPN using last known config
+  Future<void> _reconnect() async {
+    if (_lastVlessUrl == null || _lastServerId == null || _selectedServer == null) return;
+    
+    print('VPN PROVIDER: Auto-reconnecting with saved config...');
+    
+    // Brief disconnect then reconnect
+    await disconnect();
+    await Future.delayed(const Duration(seconds: 1));
+    
+    final proxyOnly = !_lastRouteAllTraffic;
+    
+    // Try standard config first, then whitelist bypass if enabled and fails
+    var result = await _vpnService.connect(
+      config: _lastVlessUrl!,
+      serverName: _selectedServer?.name ?? 'Auto-reconnect',
+      blockedApps: _lastBlockedApps,
+      proxyOnly: proxyOnly,
+    );
+    
+    // If failed and whitelist bypass was enabled, try with bypass config
+    if (!result && _lastWhitelistBypass && _selectedServer != null) {
+      print('VPN PROVIDER: Standard reconnect failed, trying whitelist bypass...');
+      // Fetch whitelist bypass config
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('access_token');
+        final uri = Uri.parse('${ApiConfig.baseUrl}/api/subscriptions/config/${_selectedServer!.id}');
+        final response = await http.get(
+          uri,
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+        );
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['config'] != null) {
+            final configs = data['config']['configs'] as Map<String, dynamic>?;
+            if (configs != null && configs['whitelistBypass'] != null) {
+              final bypassUrl = configs['whitelistBypass'] as String;
+              print('VPN PROVIDER: Retrying with whitelist bypass config');
+              result = await _vpnService.connect(
+                config: bypassUrl,
+                serverName: '${_selectedServer?.name ?? 'Auto-reconnect'} (RU Bypass)',
+                blockedApps: _lastBlockedApps,
+                proxyOnly: proxyOnly,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        print('VPN PROVIDER: Error trying whitelist bypass: $e');
+      }
+    }
+    
+    if (result) {
+      print('VPN PROVIDER: Auto-reconnect successful');
+    } else {
+      print('VPN PROVIDER: Auto-reconnect failed');
+    }
   }
 
   /// Set available servers
@@ -213,8 +354,12 @@ class VpnProvider extends ChangeNotifier {
   }
 
   /// Toggle connection
-  Future<bool> toggleConnection() async {
-    print('VPN PROVIDER: toggleConnection called, _selectedServer=$_selectedServer, status=$_status');
+  /// 
+  /// [blockedApps] - List of app package names to exclude from VPN (split tunneling)
+  /// [routeAllTraffic] - If false, only selected apps use VPN (whitelist mode)
+  /// [whitelistBypass] - Use Russian SNI for whitelist bypass mode
+  Future<bool> toggleConnection({List<String>? blockedApps, bool routeAllTraffic = true, bool whitelistBypass = false}) async {
+    print('VPN PROVIDER: toggleConnection called, _selectedServer=$_selectedServer, status=$_status, routeAllTraffic=$routeAllTraffic, whitelistBypass=$whitelistBypass');
     
     // Block if currently disconnecting
     if (_status == VpnStatus.disconnecting) {
@@ -233,6 +378,8 @@ class VpnProvider extends ChangeNotifier {
 
     // Fetch VLESS config from API
     String? vlessUrl;
+    Map<String, dynamic>? allConfigs;
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -250,30 +397,59 @@ class VpnProvider extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['config'] != null) {
-          vlessUrl = data['config']['vlessUrl'] as String?;
+          final config = data['config'];
+          
+          // Get all available configs
+          allConfigs = config['configs'] as Map<String, dynamic>?;
+          
+          // Select config based on whitelistBypass mode
+          if (whitelistBypass && allConfigs != null && allConfigs['whitelistBypass'] != null) {
+            vlessUrl = allConfigs['whitelistBypass'] as String?;
+            print('VPN PROVIDER: Using whitelist bypass config');
+          } else {
+            vlessUrl = config['vlessUrl'] as String?;
+          }
+          
           // Save vlessUrl to selectedServer for later use (ping, etc.)
           _selectedServer = _selectedServer!.copyWith(vlessUrl: vlessUrl);
           print('VPN PROVIDER: Got vlessUrl: $vlessUrl');
-          print('VPN PROVIDER: Extracted pbk: ${Uri.parse(vlessUrl!).queryParameters['pbk']}');
+          if (vlessUrl != null) {
+            print('VPN PROVIDER: Extracted pbk: ${Uri.parse(vlessUrl).queryParameters['pbk']}');
+          }
           print('VPN PROVIDER: Saved vlessUrl to selectedServer');
+          // Save to persistent storage for retry
+          await _saveLastConfig(vlessUrl!, _selectedServer!.id, blockedApps: blockedApps, routeAllTraffic: routeAllTraffic, whitelistBypass: whitelistBypass);
         }
       }
     } catch (e) {
       print('VPN PROVIDER: Error fetching config: $e');
     }
     
+    // If API failed but we have saved config, use it as fallback
     if (vlessUrl == null || vlessUrl.isEmpty) {
-      _lastError = VpnError(
-        type: 'config_error',
-        message: 'Failed to get VLESS configuration',
-      );
-      notifyListeners();
-      return false;
+      if (_lastVlessUrl != null && _lastServerId != null && _lastServerId == _selectedServer!.id) {
+        print('VPN PROVIDER: Using saved config as fallback');
+        vlessUrl = _lastVlessUrl;
+        _selectedServer = _selectedServer!.copyWith(vlessUrl: vlessUrl);
+      } else {
+        _lastError = VpnError(
+          type: 'config_error',
+          message: 'Failed to get VLESS configuration. No saved config available.',
+        );
+        notifyListeners();
+        return false;
+      }
     }
 
+    final proxyOnly = !routeAllTraffic;
+    
+    print('VPN PROVIDER: Split tunneling - routeAllTraffic: $routeAllTraffic, blockedApps: $blockedApps, proxyOnly: $proxyOnly');
+    
     return await _vpnService.toggleConnection(
       config: vlessUrl,
       serverName: _selectedServer!.name,
+      blockedApps: blockedApps,
+      proxyOnly: proxyOnly,
     );
   }
 

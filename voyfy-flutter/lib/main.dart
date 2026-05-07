@@ -167,6 +167,7 @@ class _AppInitializerState extends State<AppInitializer> {
     final authProvider = context.read<AuthProvider>();
     final vpnProvider = context.read<VpnProvider>();
     final serversProvider = context.read<ServersProvider>();
+    final settingsProvider = context.read<SettingsProvider>();
     final themeProvider = context.read<ThemeProvider>();
 
     // Initialize theme (fast)
@@ -175,6 +176,13 @@ class _AppInitializerState extends State<AppInitializer> {
       _initProgress = 0.1;
     });
     await themeProvider.initialize();
+    
+    // Initialize settings (fast)
+    setState(() {
+      _initStatus = 'Загрузка настроек...';
+      _initProgress = 0.15;
+    });
+    await settingsProvider.initialize();
 
     // Initialize auth (check for existing session)
     setState(() {

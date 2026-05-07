@@ -162,7 +162,7 @@ RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/register" \
       \"host\": \"$SERVER_IP\",
       \"port\": 8444,
       \"publicKey\": \"$PUBLIC_KEY\",
-      \"serverNames\": [\"www.google.com\", \"www.youtube.com\"],
+      \"serverNames\": [\"www.yandex.ru\", \"vk.com\", \"ok.ru\", \"mail.ru\", \"ya.ru\", \"dzen.ru\"],
       \"shortId\": \"$SHORT_ID\",
       \"premium\": $SERVER_PREMIUM
     }")

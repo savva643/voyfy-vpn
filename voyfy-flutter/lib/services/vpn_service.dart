@@ -278,8 +278,17 @@ class VpnService {
   }
 
   /// Connect using VLESS/Xray config
-  Future<bool> connect({required String config, String? serverName}) async {
+  /// 
+  /// [blockedApps] - List of Android package names that should bypass VPN (split tunneling)
+  /// [proxyOnly] - If true, only proxy traffic for specific apps (whitelist mode)
+  Future<bool> connect({
+    required String config, 
+    String? serverName,
+    List<String>? blockedApps,
+    bool proxyOnly = false,
+  }) async {
     print('VPN SERVICE: connect() called, platform: Windows=$_isWindows, Linux=$_isLinux, macOS=$_isMacOS');
+    print('VPN SERVICE: blockedApps: $blockedApps, proxyOnly: $proxyOnly');
     try {
       _updateStatus(VpnStatus.connecting);
       _currentConfig = config;
@@ -344,9 +353,9 @@ class VpnService {
           await _flutterVless!.startVless(
             remark: serverName ?? 'Voyfy Server',
             config: newConfig,
-            blockedApps: null,
+            blockedApps: blockedApps,
             bypassSubnets: null,
-            proxyOnly: false,
+            proxyOnly: proxyOnly,
           );
           print('VPN SERVICE: startVless completed successfully');
           // Force status update since callback might not work
@@ -407,7 +416,12 @@ class VpnService {
   }
 
   /// Toggle connection
-  Future<bool> toggleConnection({String? config, String? serverName}) async {
+  Future<bool> toggleConnection({
+    String? config, 
+    String? serverName,
+    List<String>? blockedApps,
+    bool proxyOnly = false,
+  }) async {
     if (_currentStatus == VpnStatus.connected || _currentStatus == VpnStatus.connecting) {
       return disconnect();
     } else {
@@ -420,7 +434,12 @@ class VpnService {
         }
         return false;
       }
-      return connect(config: config, serverName: serverName);
+      return connect(
+        config: config, 
+        serverName: serverName,
+        blockedApps: blockedApps,
+        proxyOnly: proxyOnly,
+      );
     }
   }
 

@@ -5,10 +5,31 @@ const logger = require('../utils/logger');
 /**
  * Build VLESS URL for user
  * Format: vless://uuid@host:port?params#name
+ * 
+ * Supports fallback SNI for whitelist bypass in Russia
+ * Supports CDN mode for IP hiding
  */
-const buildVlessUrl = (userUuid, server, name) => {
+const buildVlessUrl = (userUuid, server, name, options = {}) => {
   // Remove Hash32: prefix from public_key if present
   const publicKey = (server.public_key || config.server.publicKey).replace(/^Hash32:\s*/, '');
+  
+  // Determine server name (SNI) - use fallback for whitelist bypass if requested
+  let serverName = config.server.serverName;
+  if (options.useFallbackSni && config.server.fallbackServerNames?.length > 0) {
+    // Pick random fallback SNI from Russian allowed domains
+    const fallbackIndex = Math.floor(Math.random() * config.server.fallbackServerNames.length);
+    serverName = config.server.fallbackServerNames[fallbackIndex];
+    console.log(`Using fallback SNI: ${serverName} for whitelist bypass`);
+  }
+  
+  // Determine host - use CDN if enabled
+  let host = server.host;
+  let port = server.port || config.server.port;
+  if (options.useCdn && config.server.cdnEnabled && config.server.cdnHost) {
+    host = config.server.cdnHost;
+    port = 443; // CDN usually uses 443
+    console.log(`Using CDN host: ${host}`);
+  }
   
   const params = new URLSearchParams({
     security: 'reality',
@@ -18,11 +39,11 @@ const buildVlessUrl = (userUuid, server, name) => {
     fp: 'chrome',
     type: 'tcp',
     flow: 'xtls-rprx-vision',
-    sni: config.server.serverName,
+    sni: serverName,
     sid: server.short_id || config.server.shortId,
   });
   
-  return `vless://${userUuid}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(name)}`;
+  return `vless://${userUuid}@${host}:${port}?${params.toString()}#${encodeURIComponent(name)}`;
 };
 
 /**
@@ -245,7 +266,11 @@ const updateUsage = async (req, res) => {
 /**
  * Get user's VLESS configuration for specific server
  */
-const getUserConfig = async (userId, serverId) => {
+/**
+ * Get user's VLESS configuration for specific server
+ * Supports whitelist bypass mode for Russia
+ */
+const getUserConfig = async (userId, serverId, options = {}) => {
   try {
     // Get user info
     const userResult = await query(
@@ -277,17 +302,36 @@ const getUserConfig = async (userId, serverId) => {
     
     const server = serverResult.rows[0];
     
-    // Generate VLESS URL using buildVlessUrl function (removes Hash32 prefix)
-    const vlessUrl = buildVlessUrl(userUuid, server, server.name || `${server.country}-${server.host}`);
+    // Generate multiple VLESS URLs:
+    // 1. Standard URL
+    // 2. Whitelist bypass URL (fallback SNI)
+    // 3. CDN URL (if enabled)
+    const baseName = server.name || `${server.country}-${server.host}`;
+    
+    const vlessUrl = buildVlessUrl(userUuid, server, baseName);
+    const vlessUrlWhitelist = buildVlessUrl(userUuid, server, `${baseName} (RU Bypass)`, { useFallbackSni: true });
+    
+    const configs = {
+      standard: vlessUrl,
+      whitelistBypass: vlessUrlWhitelist,
+    };
+    
+    // Add CDN config if enabled
+    if (config.server.cdnEnabled && config.server.cdnHost) {
+      const vlessUrlCdn = buildVlessUrl(userUuid, server, `${baseName} (CDN)`, { useCdn: true });
+      configs.cdn = vlessUrlCdn;
+    }
     
     return {
       success: true,
       config: {
-        vlessUrl: vlessUrl,
+        vlessUrl: vlessUrl, // Default to standard
+        configs: configs, // All available configs
         serverId: server.id,
         serverName: server.name || `${server.country}-${server.host}`,
         host: server.host,
-        port: server.port
+        port: server.port,
+        whitelistBypassAvailable: true,
       }
     };
   } catch (err) {

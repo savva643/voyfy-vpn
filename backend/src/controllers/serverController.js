@@ -35,7 +35,7 @@ const getServers = async (req, res) => {
       premium: s.premium,
       isFree: !s.premium, // Flutter uses isFree
       load: s.load_percentage,
-      src: `assets/images/${s.country_code.toLowerCase()}.jpeg`, // Flag image path
+      src: `assets/images/${s.country_code?.toLowerCase() || 'unknown'}.jpeg`, // Flag image path
       locations: 1, // Number of locations (can be calculated from location data)
     }));
 
@@ -253,9 +253,9 @@ const getXrayConfig = async (req, res) => {
           security: 'reality',
           realitySettings: {
             show: false,
-            dest: 'www.microsoft.com:443',
+            dest: 'www.yandex.ru:443',
             xver: 0,
-            serverNames: ['www.microsoft.com', 'microsoft.com'],
+            serverNames: ['www.yandex.ru', 'vk.com', 'ok.ru', 'mail.ru', 'ya.ru', 'dzen.ru'],
             privateKey: process.env.XRAY_PRIVATE_KEY,
             publicKey: process.env.XRAY_PUBLIC_KEY,
             shortIds: [process.env.XRAY_SHORT_ID || '0123456789abcdef'],

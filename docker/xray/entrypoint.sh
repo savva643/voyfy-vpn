@@ -7,8 +7,8 @@ set -e
 
 API_BASE_URL="${API_BASE_URL:-http://api:4000}"
 XRAY_PORT="${XRAY_PORT:-443}"
-SERVER_NAME="${XRAY_SERVER_NAME:-www.microsoft.com}"
-SERVER_NAME_ALT="${XRAY_SERVER_NAME_ALT:-microsoft.com}"
+SERVER_NAME="${XRAY_SERVER_NAME:-www.yandex.ru}"
+SERVER_NAME_ALT="${XRAY_SERVER_NAME_ALT:-vk.com}"
 PRIVATE_KEY="${XRAY_PRIVATE_KEY}"
 PUBLIC_KEY="${XRAY_PUBLIC_KEY}"
 SHORT_ID="${XRAY_SHORT_ID:-0123456789abcdef}"
@@ -67,7 +67,13 @@ cat > "$CONFIG_FILE" << 'EOF'
           "xver": 0,
           "serverNames": [
             "SERVER_PLACEHOLDER",
-            "SERVER_ALT_PLACEHOLDER"
+            "SERVER_ALT_PLACEHOLDER",
+            "www.yandex.ru",
+            "vk.com",
+            "ok.ru",
+            "mail.ru",
+            "ya.ru",
+            "dzen.ru"
           ],
           "privateKey": "PRIVATE_KEY_PLACEHOLDER",
           "publicKey": "PUBLIC_KEY_PLACEHOLDER",

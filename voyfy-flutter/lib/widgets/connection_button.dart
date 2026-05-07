@@ -51,7 +51,7 @@ class ConnectionButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         GestureDetector(
-          onTap: onTap,
+          onTap: isBusy ? null : onTap,
           child: Container(
             width: buttonSize,
             height: buttonSize,

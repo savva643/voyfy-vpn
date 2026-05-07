@@ -36,9 +36,23 @@ const config = {
   server: {
     publicKey: process.env.XRAY_PUBLIC_KEY || '',
     privateKey: process.env.XRAY_PRIVATE_KEY || '',
-    serverName: process.env.XRAY_SERVER_NAME || 'www.microsoft.com',
+    serverName: process.env.XRAY_SERVER_NAME || 'www.yandex.ru',
+    // Fallback server names for whitelist bypass (Russian domains allowed in RU)
+    fallbackServerNames: [
+      'www.yandex.ru',
+      'vk.com', 
+      'ok.ru',
+      'mail.ru',
+      'ya.ru',
+      'dzen.ru',
+      'gazeta.ru',
+      'lenta.ru',
+    ],
     port: process.env.XRAY_PORT || 443,
     shortId: process.env.XRAY_SHORT_ID || '0123456789abcdef',
+    // Enable CDN mode for IP hiding (requires CDN config on server)
+    cdnEnabled: process.env.XRAY_CDN_ENABLED === 'true',
+    cdnHost: process.env.XRAY_CDN_HOST || '',
   },
   
   // CORS

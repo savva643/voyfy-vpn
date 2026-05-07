@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
+import '../providers/settings_provider.dart';
 import '../providers/vpn_provider.dart';
 import 'vpn_service.dart';
 
@@ -17,6 +19,7 @@ class TrayManager {
   BuildContext? _context;
   bool _isInitialized = false;
   bool _isExiting = false;
+  StreamSubscription<VpnStatus>? _statusSubscription;
 
   /// Check if running on desktop platform
   bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -59,6 +62,14 @@ class TrayManager {
 
       // Set up window listener
       windowManager.addListener(_WindowListener(this));
+      
+      // Subscribe to VPN status changes to update tray icon
+      final vpnProvider = context.read<VpnProvider>();
+      _statusSubscription = vpnProvider.vpnService.onStatusChanged.listen((status) {
+        print('TRAY MANAGER: VPN status changed to $status, updating menu...');
+        updateMenu();
+        _updateTrayIcon(status);
+      });
 
       // Prevent window from closing, minimize to tray instead
       await windowManager.setPreventClose(true);
@@ -155,6 +166,31 @@ class TrayManager {
     if (!_isInitialized || _context == null || _systemTray == null) return;
     await _buildMenu(_context!);
   }
+  
+  /// Update tray icon based on VPN status
+  Future<void> _updateTrayIcon(VpnStatus status) async {
+    if (_systemTray == null) return;
+    
+    String iconPath;
+    if (Platform.isWindows) {
+      // Windows uses different icons for connected/disconnected
+      iconPath = status == VpnStatus.connected 
+          ? 'assets/images/logo_connected.ico'
+          : 'assets/images/logo.ico';
+    } else {
+      // macOS/Linux use PNG
+      iconPath = status == VpnStatus.connected 
+          ? 'assets/images/logo_connected.png'
+          : 'assets/images/logo.png';
+    }
+    
+    try {
+      await _systemTray?.setImage(iconPath);
+      print('TRAY MANAGER: Updated icon to $iconPath');
+    } catch (e) {
+      print('TRAY MANAGER: Error updating icon: $e');
+    }
+  }
 
   /// Rebuild tray menu with fresh context (for theme/language changes)
   Future<void> rebuildWithContext(BuildContext context) async {
@@ -207,7 +243,12 @@ class TrayManager {
   /// Handle connect/disconnect from tray
   void _handleConnectDisconnect(BuildContext context) {
     final vpnProvider = context.read<VpnProvider>();
-    vpnProvider.toggleConnection();
+    final settingsProvider = context.read<SettingsProvider>();
+    vpnProvider.toggleConnection(
+      blockedApps: settingsProvider.routeAllTraffic ? null : settingsProvider.excludedApps,
+      routeAllTraffic: settingsProvider.routeAllTraffic,
+      whitelistBypass: settingsProvider.whitelistBypass,
+    );
     // Update menu after action
     Future.delayed(Duration(milliseconds: 500), () => updateMenu());
   }
@@ -249,8 +290,11 @@ class TrayManager {
     
     try {
       await _systemTray?.destroy();
-      _isInitialized = false;
-      print('TRAY MANAGER: Tray disposed');
+      _context = null;
+    _isInitialized = false;
+    _statusSubscription?.cancel();
+    _statusSubscription = null;
+    print('TRAY MANAGER: Tray destroyed');
     } catch (e) {
       print('TRAY MANAGER: Error disposing tray: $e');
     }

@@ -102,8 +102,8 @@ http {
             add_header Cache-Control "no-cache";
         }
 
-        # Xray binary download and all Xray-related files
-        location /xray/ {
+        # Xray binary download
+        location = /xray/download {
             proxy_pass http://api_backend;
             proxy_http_version 1.1;
             proxy_set_header Connection "";

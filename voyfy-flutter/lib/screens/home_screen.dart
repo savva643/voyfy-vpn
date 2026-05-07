@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../config/api_config.dart';
 
+import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/vpn_provider.dart';
 import '../services/vpn_service.dart';
@@ -183,6 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> toggleConnection() async {
     // Use VpnProvider which has proper server selection logic
     final vpnProvider = context.read<VpnProvider>();
+    final settingsProvider = context.read<SettingsProvider>();
     
     if (!vpnProvider.isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -190,8 +192,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
-    
-    final result = await vpnProvider.toggleConnection();
+
+    final result = await vpnProvider.toggleConnection(
+      blockedApps: settingsProvider.routeAllTraffic ? null : settingsProvider.excludedApps,
+      routeAllTraffic: settingsProvider.routeAllTraffic,
+      whitelistBypass: settingsProvider.whitelistBypass,
+    );
     
     if (!result && mounted) {
       final error = vpnProvider.lastError;
