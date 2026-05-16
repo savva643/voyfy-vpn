@@ -127,7 +127,10 @@ fi
 
 # Step 4: Generate secrets
 echo "Step 4: Generating secrets..."
-DB_PASSWORD=$(openssl rand -base64 32)
+
+# Use fixed database password (change this in production!)
+DB_PASSWORD="voyfy_secret_2024"
+
 JWT_SECRET=$(openssl rand -hex 32)
 JWT_REFRESH_SECRET=$(openssl rand -hex 32)
 ADMIN_API_KEY=$(openssl rand -hex 32)
