@@ -57,6 +57,7 @@ services:
       - ADMIN_API_KEY=${ADMIN_API_KEY}
     volumes:
       - ./backend/logs:/app/logs
+      - ./backend/src/xray-binaries:/app/src/xray-binaries
     ports:
       - "4000:4000"
     networks:

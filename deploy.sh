@@ -10,7 +10,7 @@ echo "Voyfy VPN Docker Deployment"
 echo "======================================"
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "Please run as root (sudo)"
     exit 1
 fi
@@ -153,11 +153,11 @@ echo "XRAY Short ID: $XRAY_SHORT_ID"
 # Step 4.5: Download Xray binaries for client distribution
 if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
     echo "Step 4.5: Downloading Xray binaries for clients..."
-    
+
     XRAY_BINARIES_DIR="$PROJECT_DIR/backend/src/xray-binaries"
     mkdir -p "$XRAY_BINARIES_DIR"
     cd "$XRAY_BINARIES_DIR"
-    
+
     # Function to download and extract Xray
     download_xray() {
         local platform=$1
@@ -165,16 +165,16 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
         local filename=$3
         local asset_name=$4
         local url="https://github.com/XTLS/Xray-core/releases/latest/download/${asset_name}"
-        
+
         echo "Downloading Xray for ${platform}-${arch}..."
-        
+
         if [ -f "$filename" ]; then
             echo "  ${filename} already exists, skipping..."
             return 0
         fi
-        
+
         echo "  URL: $url"
-        
+
         # Download with verbose output for debugging
         if ! wget --show-progress "$url" -O "temp_${platform}_${arch}.zip" 2>&1; then
             echo "  wget failed, trying curl..."
@@ -183,16 +183,16 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
                 return 1
             fi
         fi
-        
+
         # Check if file was downloaded and has content
         if [ ! -s "temp_${platform}_${arch}.zip" ]; then
             echo "  ERROR: Downloaded file is empty"
             rm -f "temp_${platform}_${arch}.zip"
             return 1
         fi
-        
+
         echo "  File downloaded, size: $(ls -lh temp_${platform}_${arch}.zip | awk '{print $5}')"
-        
+
         # Extract with error output
         if ! unzip -o "temp_${platform}_${arch}.zip" 2>&1; then
             echo "  ERROR: Failed to extract ${platform}-${arch}"
@@ -200,7 +200,7 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
             rm -f "temp_${platform}_${arch}.zip"
             return 1
         fi
-        
+
         # Find and rename the binary
         if [ -f "xray.exe" ]; then
             mv xray.exe "$filename"
@@ -214,13 +214,12 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
             ls -la
             return 1
         fi
-        
-        # Cleanup
+
+        # Cleanup - keep important files (geoip.dat, geosite.dat, wintun.dll)
         rm -f "temp_${platform}_${arch}.zip"
-        rm -f geoip.dat geosite.dat 2>/dev/null
         rm -f *.zip 2>/dev/null
-        rm -f README.md LICENSE 2>/dev/null
-        
+        rm -f README.md LICENSE LICENSE-wintun.txt 2>/dev/null
+
         if [ -f "$filename" ]; then
             echo "  ${filename} downloaded successfully"
             ls -lh "$filename"
@@ -229,20 +228,20 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
             return 1
         fi
     }
-    
+
     # Download all platforms with correct asset names
     # Windows uses amd64 not 64
     download_xray "windows" "64" "xray-windows-64.exe" "Xray-windows-64.zip" || \
         download_xray "windows" "64" "xray-windows-64.exe" "Xray-windows-amd64.zip" || \
         echo "  Windows 64-bit download failed, will skip..."
-    
+
     download_xray "windows" "arm64" "xray-windows-arm64.exe" "Xray-windows-arm64.zip" || \
         echo "  Windows ARM64 not available, skipping..."
-    
+
     download_xray "linux" "64" "xray-linux-64" "Xray-linux-64.zip" || \
         download_xray "linux" "64" "xray-linux-64" "Xray-linux-amd64.zip" || \
         echo "  Linux 64-bit download failed..."
-    
+
     download_xray "linux" "arm64" "xray-linux-arm64" "Xray-linux-arm64.zip" || \
         download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a" "Xray-linux-arm64-v8a.zip" || \
         echo "  Linux ARM64 not available, skipping..."
@@ -252,25 +251,20 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
     download_xray "macos" "arm64" "xray-macos-arm64" "Xray-macos-arm64.zip" || \
         download_xray "macos" "arm64-v8a" "xray-darwin-arm64" "Xray-darwin-arm64.zip" || \
         echo "  macOS ARM64 download failed, skipping..."
-    
+
     echo "Xray binaries download complete!"
     echo "Available binaries:"
     ls -lh "$XRAY_BINARIES_DIR/"
-    
+
     cd "$PROJECT_DIR"
 else
     echo "Step 4.5: Skipping Xray download (SKIP_XRAY_DOWNLOAD=true)"
 fi
 
-# Step 5: Create .env file for Docker (ONLY if it doesn't exist)
+# Step 5: Create .env file for Docker
 echo "Step 5: Creating .env file..."
 cd docker
-
-if [ -f .env ]; then
-    echo "WARNING: .env file already exists, preserving existing configuration"
-    echo "To regenerate .env, delete it first: rm docker/.env"
-else
-    cat > .env <<EOF
+cat > .env <<EOF
 # Database Configuration
 DB_USER=voyfy
 DB_PASSWORD=$DB_PASSWORD
@@ -283,7 +277,7 @@ JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 # Xray Configuration
 XRAY_PUBLIC_KEY=$XRAY_PUBLIC_KEY
 XRAY_PRIVATE_KEY=$XRAY_PRIVATE_KEY
-XRAY_SERVER_NAME=www.microsoft.com
+XRAY_SERVER_NAME=www.yandex.ru
 XRAY_SHORT_ID=$XRAY_SHORT_ID
 XRAY_PORT=8443
 XRAY_API_PORT=10085
@@ -291,8 +285,8 @@ XRAY_API_PORT=10085
 # Admin API Key
 ADMIN_API_KEY=$ADMIN_API_KEY
 EOF
-    echo "Docker .env created"
-fi
+
+echo "Docker .env created"
 
 # Step 6: Setup SSL certificates
 if [ "$SKIP_SSL" = false ]; then

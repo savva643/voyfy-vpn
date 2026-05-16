@@ -49,6 +49,15 @@ echo -e "${GREEN}✅ Код верифицирован: $SERVER_NAME${NC}"
 apt-get update -qq
 apt-get install -y -qq curl wget jq uuid-runtime ufw bc openssl
 
+# Удаление старого Xray если есть
+echo -e "${YELLOW}🧹 Очистка старого XRay...${NC}"
+systemctl stop xray 2>/dev/null || true
+systemctl disable xray 2>/dev/null || true
+rm -f /usr/local/bin/xray 2>/dev/null || true
+rm -f /usr/local/etc/xray/config.json 2>/dev/null || true
+rm -f /etc/systemd/system/xray.service 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
+
 # Фаервол
 ufw default deny incoming >/dev/null 2>&1
 ufw default allow outgoing >/dev/null 2>&1
