@@ -24,9 +24,9 @@ services:
     env_file:
       - ./docker/.env
     environment:
-      POSTGRES_USER: ${DB_USER:-voyfy}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-voyfy_secret}
-      POSTGRES_DB: ${DB_NAME:-voyfy_vpn}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -34,7 +34,7 @@ services:
     networks:
       - voyfy-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-voyfy} -d ${DB_NAME:-voyfy_vpn}"]
+      test: ["CMD-SHELL", "pg_isready -U voyfy -d voyfy_vpn"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,9 +53,9 @@ services:
       - PORT=4000
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-voyfy_vpn}
-      - DB_USER=${DB_USER:-voyfy}
-      - DB_PASSWORD=${DB_PASSWORD:-voyfy_secret}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - ADMIN_API_KEY=${ADMIN_API_KEY}
