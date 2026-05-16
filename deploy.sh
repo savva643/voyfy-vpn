@@ -264,6 +264,14 @@ else
     echo "Step 4.5: Skipping Xray download (SKIP_XRAY_DOWNLOAD=true)"
 fi
 
+# Step 4.6: Remove old Docker containers and volumes (to avoid password conflicts)
+echo "Step 4.6: Cleaning up old Docker containers and volumes..."
+cd "$PROJECT_DIR"
+docker compose down -v 2>/dev/null || true
+docker rm -f voyfy-api voyfy-postgres voyfy-nginx 2>/dev/null || true
+docker volume rm voyfy-vpn_postgres_data 2>/dev/null || true
+echo "Old containers and volumes removed"
+
 # Step 5: Create .env file for Docker
 echo "Step 5: Creating .env file..."
 cd docker
@@ -530,10 +538,10 @@ echo "Step 10: Setting up SSL auto-renewal..."
 cat > /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh <<'EOF'
 #!/bin/bash
 # Copy renewed certificates to Docker nginx
-cp /etc/letsencrypt/live/vip.necsoura.ru/fullchain.pem /var/www/voyfy-vpn/docker/nginx/ssl/
-cp /etc/letsencrypt/live/vip.necsoura.ru/privkey.pem /var/www/voyfy-vpn/docker/nginx/ssl/
-chown -R 1000:1000 /var/www/voyfy-vpn/docker/nginx/ssl
-docker compose -f /var/www/voyfy-vpn/docker/docker-compose.yml restart nginx
+cp /etc/letsencrypt/live/vip.necsoura.ru/fullchain.pem /opt/voyfy-vpn/docker/nginx/ssl/
+cp /etc/letsencrypt/live/vip.necsoura.ru/privkey.pem /opt/voyfy-vpn/docker/nginx/ssl/
+chown -R 1000:1000 /opt/voyfy-vpn/docker/nginx/ssl
+docker compose -f /opt/voyfy-vpn/docker-compose.yml restart nginx
 EOF
 
 chmod +x /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh
