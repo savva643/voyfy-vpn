@@ -169,7 +169,7 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
         local asset_name=$4
         local url="https://github.com/XTLS/Xray-core/releases/latest/download/${asset_name}"
 
-        echo "Downloading Xray for ${platform}-${arch}..."
+        echo "Downloading Xray ZIP for ${platform}-${arch}..."
 
         if [ -f "$filename" ]; then
             echo "  ${filename} already exists, skipping..."
@@ -178,81 +178,45 @@ if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
 
         echo "  URL: $url"
 
-        # Download with verbose output for debugging
-        if ! wget --show-progress "$url" -O "temp_${platform}_${arch}.zip" 2>&1; then
+        # Download directly as ZIP
+        if ! wget --show-progress "$url" -O "$filename" 2>&1; then
             echo "  wget failed, trying curl..."
-            if ! curl -L --progress-bar -o "temp_${platform}_${arch}.zip" "$url" 2>&1; then
+            if ! curl -L --progress-bar -o "$filename" "$url" 2>&1; then
                 echo "  ERROR: Could not download ${platform}-${arch}"
                 return 1
             fi
         fi
 
         # Check if file was downloaded and has content
-        if [ ! -s "temp_${platform}_${arch}.zip" ]; then
+        if [ ! -s "$filename" ]; then
             echo "  ERROR: Downloaded file is empty"
-            rm -f "temp_${platform}_${arch}.zip"
+            rm -f "$filename"
             return 1
         fi
 
-        echo "  File downloaded, size: $(ls -lh temp_${platform}_${arch}.zip | awk '{print $5}')"
-
-        # Extract with error output
-        if ! unzip -o "temp_${platform}_${arch}.zip" 2>&1; then
-            echo "  ERROR: Failed to extract ${platform}-${arch}"
-            echo "  File type: $(file temp_${platform}_${arch}.zip)"
-            rm -f "temp_${platform}_${arch}.zip"
-            return 1
-        fi
-
-        # Find and rename the binary
-        if [ -f "xray.exe" ]; then
-            mv xray.exe "$filename"
-            echo "  Found xray.exe, renamed to $filename"
-        elif [ -f "xray" ]; then
-            mv xray "$filename"
-            chmod +x "$filename"
-            echo "  Found xray, renamed to $filename"
-        else
-            echo "  ERROR: Neither xray.exe nor xray found after extraction"
-            ls -la
-            return 1
-        fi
-
-        # Cleanup - keep important files (geoip.dat, geosite.dat, wintun.dll)
-        rm -f "temp_${platform}_${arch}.zip"
-        rm -f *.zip 2>/dev/null
-        rm -f README.md LICENSE LICENSE-wintun.txt 2>/dev/null
-
-        if [ -f "$filename" ]; then
-            echo "  ${filename} downloaded successfully"
-            ls -lh "$filename"
-        else
-            echo "  ERROR: ${filename} not found after extraction"
-            return 1
-        fi
+        echo "  ${filename} downloaded successfully ($(ls -lh "$filename" | awk '{print $5}'))"
     }
 
-    # Download all platforms with correct asset names
-    # Windows uses amd64 not 64
-    download_xray "windows" "64" "xray-windows-64.exe" "Xray-windows-64.zip" || \
-        download_xray "windows" "64" "xray-windows-64.exe" "Xray-windows-amd64.zip" || \
+    # Download all platforms as ZIP archives
+    download_xray "windows" "amd64" "xray-windows-amd64.zip" "Xray-windows-64.zip" || \
+        download_xray "windows" "amd64" "xray-windows-amd64.zip" "Xray-windows-amd64.zip" || \
         echo "  Windows 64-bit download failed, will skip..."
 
-    download_xray "windows" "arm64" "xray-windows-arm64.exe" "Xray-windows-arm64.zip" || \
+    download_xray "windows" "arm64" "xray-windows-arm64.zip" "Xray-windows-arm64.zip" || \
         echo "  Windows ARM64 not available, skipping..."
 
-    download_xray "linux" "64" "xray-linux-64" "Xray-linux-64.zip" || \
-        download_xray "linux" "64" "xray-linux-64" "Xray-linux-amd64.zip" || \
+    download_xray "linux" "amd64" "xray-linux-amd64.zip" "Xray-linux-64.zip" || \
+        download_xray "linux" "amd64" "xray-linux-amd64.zip" "Xray-linux-amd64.zip" || \
         echo "  Linux 64-bit download failed..."
 
-    download_xray "linux" "arm64" "xray-linux-arm64" "Xray-linux-arm64.zip" || \
-        download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a" "Xray-linux-arm64-v8a.zip" || \
+    download_xray "linux" "arm64" "xray-linux-arm64.zip" "Xray-linux-arm64.zip" || \
+        download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a.zip" "Xray-linux-arm64-v8a.zip" || \
         echo "  Linux ARM64 not available, skipping..."
-    download_xray "macos" "64" "xray-macos-64" "Xray-macos-64.zip" || \
-        download_xray "macos" "64" "xray-darwin-64" "Xray-darwin-amd64.zip" || \
+    download_xray "darwin" "amd64" "xray-darwin-amd64.zip" "Xray-macos-64.zip" || \
+        download_xray "darwin" "amd64" "xray-darwin-amd64.zip" "Xray-darwin-amd64.zip" || \
         echo "  macOS Intel download failed, skipping..."
-    download_xray "macos" "arm64" "xray-macos-arm64" "Xray-macos-arm64.zip" || \
-        download_xray "macos" "arm64-v8a" "xray-darwin-arm64" "Xray-darwin-arm64.zip" || \
+    download_xray "darwin" "arm64" "xray-darwin-arm64.zip" "Xray-macos-arm64.zip" || \
+        download_xray "darwin" "arm64" "xray-darwin-arm64.zip" "Xray-darwin-arm64.zip" || \
         echo "  macOS ARM64 download failed, skipping..."
 
     echo "Xray binaries download complete!"

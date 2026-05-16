@@ -85,17 +85,18 @@ const fs = require('fs');
 
 const XRAY_BINARIES_DIR = path.join(__dirname, 'xray-binaries');
 
-// Map of platform-arch to binary filename
+// Map of platform-arch to ZIP filename
 const XRAY_BINARIES = {
-  'windows-amd64': 'xray-windows-64.exe',
-  'windows-arm64': 'xray-windows-arm64.exe',
-  'linux-amd64': 'xray-linux-64',
-  'linux-arm64': 'xray-linux-arm64-v8a',
-  'darwin-amd64': 'xray-darwin-64',      // macOS Intel
-  'darwin-arm64': 'xray-darwin-arm64',   // macOS Apple Silicon
+  'windows-amd64': 'xray-windows-amd64.zip',
+  'windows-arm64': 'xray-windows-arm64.zip',
+  'linux-amd64': 'xray-linux-amd64.zip',
+  'linux-arm64': 'xray-linux-arm64.zip',
+  'linux-arm64-v8a': 'xray-linux-arm64-v8a.zip',
+  'darwin-amd64': 'xray-darwin-amd64.zip',      // macOS Intel
+  'darwin-arm64': 'xray-darwin-arm64.zip',   // macOS Apple Silicon
 };
 
-// Download Xray binary
+// Download Xray ZIP archive
 app.get('/xray/download', (req, res) => {
   const { platform, arch, all } = req.query;
   
@@ -105,32 +106,40 @@ app.get('/xray/download', (req, res) => {
     });
   }
   
-  const key = `${platform}-${arch}`;
+  // Support both "amd64" and "64" arch naming
+  let normalizedArch = arch;
+  if (arch === '64') normalizedArch = 'amd64';
+  if (arch === '32') normalizedArch = '386';
+  
+  const key = `${platform}-${normalizedArch}`;
   const filename = XRAY_BINARIES[key];
   
   if (!filename) {
     return res.status(404).json({ 
-      error: 'Binary not found for platform-arch combination',
+      error: 'ZIP not found for platform-arch combination',
+      platform,
+      arch: normalizedArch,
       supported: Object.keys(XRAY_BINARIES)
     });
   }
   
-  // If 'all' parameter is set, return ZIP with all files
+  // If 'all' parameter is set, return ZIP with all files (geoip, geosite, wintun)
   if (all === 'true' || all === '1') {
-    return downloadAllFiles(req, res, platform, arch, key, filename);
+    return downloadAllFiles(req, res, platform, normalizedArch, key, filename);
   }
   
   const filePath = path.join(XRAY_BINARIES_DIR, filename);
   
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ 
-      error: 'Binary file not found on server',
-      file: filename
+      error: 'ZIP file not found on server',
+      file: filename,
+      path: filePath
     });
   }
   
   // Set headers for download
-  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Length', fs.statSync(filePath).size);
   
@@ -138,28 +147,28 @@ app.get('/xray/download', (req, res) => {
   const stream = fs.createReadStream(filePath);
   stream.pipe(res);
   
-  logger.info(`Xray binary downloaded: ${filename} (${platform}-${arch})`);
+  logger.info(`Xray ZIP downloaded: ${filename} (${platform}-${normalizedArch})`);
 });
 
-// Helper function to download all files as ZIP
-function downloadAllFiles(req, res, platform, arch, key, binaryFilename) {
-  const platformDir = path.join(XRAY_BINARIES_DIR, key);
+// Helper function to download all files as ZIP (includes geoip, geosite, wintun)
+function downloadAllFiles(req, res, platform, arch, key, zipFilename) {
+  const mainZipPath = path.join(XRAY_BINARIES_DIR, zipFilename);
   
-  if (!fs.existsSync(platformDir)) {
+  if (!fs.existsSync(mainZipPath)) {
     return res.status(404).json({ 
-      error: 'Platform directory not found on server',
-      platform: key
+      error: 'ZIP file not found on server',
+      file: zipFilename
     });
   }
   
-  // Create ZIP archive
+  // Create new ZIP with all files
   const archiver = require('archiver');
   const archive = archiver('zip', { zlib: { level: 9 } });
   
-  const zipFilename = `xray-${platform}-${arch}-all.zip`;
+  const outputFilename = `xray-${platform}-${arch}-all.zip`;
   
   res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
   
   archive.on('error', (err) => {
     logger.error('Archive error', err);
@@ -168,34 +177,40 @@ function downloadAllFiles(req, res, platform, arch, key, binaryFilename) {
   
   archive.pipe(res);
   
-  // Add all files from platform directory
-  const files = fs.readdirSync(platformDir);
-  files.forEach(file => {
-    const filePath = path.join(platformDir, file);
-    if (fs.statSync(filePath).isFile()) {
-      archive.file(filePath, { name: file });
-    }
-  });
+  // Add main Xray ZIP contents (extract and add files)
+  const AdmZip = require('adm-zip');
+  try {
+    const mainZip = new AdmZip(mainZipPath);
+    const zipEntries = mainZip.getEntries();
+    zipEntries.forEach(entry => {
+      if (!entry.isDirectory) {
+        archive.append(entry.getData(), { name: entry.entryName });
+      }
+    });
+  } catch (err) {
+    logger.error('Error extracting main ZIP', err);
+    // Fallback: just add the ZIP as-is
+    archive.file(mainZipPath, { name: zipFilename });
+  }
   
-  // Add wintun and geotip files
-  const wintunPath = path.join(__dirname, 'wintun');
-  const geotipPath = path.join(__dirname, 'geotip');
-  fs.readdirSync(wintunPath).forEach(file => {
-    const filePath = path.join(wintunPath, file);
-    if (fs.statSync(filePath).isFile()) {
-      archive.file(filePath, { name: `wintun/${file}` });
-    }
-  });
-  fs.readdirSync(geotipPath).forEach(file => {
-    const filePath = path.join(geotipPath, file);
-    if (fs.statSync(filePath).isFile()) {
-      archive.file(filePath, { name: `geotip/${file}` });
-    }
-  });
+  // Add geoip and geosite if available
+  const geoipPath = path.join(XRAY_BINARIES_DIR, 'geoip.dat');
+  const geositePath = path.join(XRAY_BINARIES_DIR, 'geosite.dat');
+  const wintunPath = path.join(XRAY_BINARIES_DIR, 'wintun.dll');
+  
+  if (fs.existsSync(geoipPath)) {
+    archive.file(geoipPath, { name: 'geoip.dat' });
+  }
+  if (fs.existsSync(geositePath)) {
+    archive.file(geositePath, { name: 'geosite.dat' });
+  }
+  if (fs.existsSync(wintunPath) && platform === 'windows') {
+    archive.file(wintunPath, { name: 'wintun.dll' });
+  }
   
   archive.finalize();
   
-  logger.info(`Xray all files downloaded as ZIP: ${zipFilename} (${platform}-${arch}, ${files.length} files)`);
+  logger.info(`Xray all files downloaded as ZIP: ${outputFilename} (${platform}-${arch})`);
 }
 
 // Get binary checksum
