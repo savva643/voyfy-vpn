@@ -266,7 +266,7 @@ fi
 
 # Step 4.6: Remove old Docker containers and volumes (to avoid password conflicts)
 echo "Step 4.6: Cleaning up old Docker containers and volumes..."
-cd "$PROJECT_DIR"
+cd "$DOCKER_DIR"
 docker compose down -v 2>/dev/null || true
 docker rm -f voyfy-api voyfy-postgres voyfy-nginx 2>/dev/null || true
 docker volume rm voyfy-vpn_postgres_data 2>/dev/null || true
@@ -274,7 +274,6 @@ echo "Old containers and volumes removed"
 
 # Step 5: Create .env file for Docker
 echo "Step 5: Creating .env file..."
-cd docker
 cat > .env <<EOF
 # Database Configuration (for API)
 DB_USER=voyfy
@@ -465,9 +464,9 @@ http {
 }
 EOF
 
-    # Update docker-compose.yml to use HTTPS nginx
-    sed -i 's|nginx-http.conf|nginx-https.conf|g' $DOCKER_DIR/docker-compose.yml
-    echo "Using HTTPS nginx configuration"
+    # Copy HTTPS config as main nginx.conf
+    cp $DOCKER_DIR/nginx/nginx-https.conf $DOCKER_DIR/nginx/nginx.conf
+    echo "Using HTTPS nginx configuration (copied to nginx.conf)"
 else
     echo "Using HTTP nginx configuration (no SSL)"
 fi
