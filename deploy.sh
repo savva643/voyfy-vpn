@@ -404,6 +404,19 @@ http {
             access_log off;
         }
 
+        # Xray binary downloads
+        location /xray/ {
+            proxy_pass http://api_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
         # VPN server installation scripts
         location /vpn-server/ {
             alias /usr/share/nginx/vpn-server/;
