@@ -97,7 +97,7 @@ const XRAY_BINARIES = {
 
 // Download Xray binary
 app.get('/xray/download', (req, res) => {
-  const { platform, arch } = req.query;
+  const { platform, arch, all } = req.query;
   
   if (!platform || !arch) {
     return res.status(400).json({ 
@@ -113,6 +113,11 @@ app.get('/xray/download', (req, res) => {
       error: 'Binary not found for platform-arch combination',
       supported: Object.keys(XRAY_BINARIES)
     });
+  }
+  
+  // If 'all' parameter is set, return ZIP with all files
+  if (all === 'true' || all === '1') {
+    return downloadAllFiles(req, res, platform, arch, key, filename);
   }
   
   const filePath = path.join(XRAY_BINARIES_DIR, filename);
@@ -135,6 +140,63 @@ app.get('/xray/download', (req, res) => {
   
   logger.info(`Xray binary downloaded: ${filename} (${platform}-${arch})`);
 });
+
+// Helper function to download all files as ZIP
+function downloadAllFiles(req, res, platform, arch, key, binaryFilename) {
+  const platformDir = path.join(XRAY_BINARIES_DIR, key);
+  
+  if (!fs.existsSync(platformDir)) {
+    return res.status(404).json({ 
+      error: 'Platform directory not found on server',
+      platform: key
+    });
+  }
+  
+  // Create ZIP archive
+  const archiver = require('archiver');
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  
+  const zipFilename = `xray-${platform}-${arch}-all.zip`;
+  
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+  
+  archive.on('error', (err) => {
+    logger.error('Archive error', err);
+    res.status(500).json({ error: 'Failed to create archive' });
+  });
+  
+  archive.pipe(res);
+  
+  // Add all files from platform directory
+  const files = fs.readdirSync(platformDir);
+  files.forEach(file => {
+    const filePath = path.join(platformDir, file);
+    if (fs.statSync(filePath).isFile()) {
+      archive.file(filePath, { name: file });
+    }
+  });
+  
+  // Add wintun and geotip files
+  const wintunPath = path.join(__dirname, 'wintun');
+  const geotipPath = path.join(__dirname, 'geotip');
+  fs.readdirSync(wintunPath).forEach(file => {
+    const filePath = path.join(wintunPath, file);
+    if (fs.statSync(filePath).isFile()) {
+      archive.file(filePath, { name: `wintun/${file}` });
+    }
+  });
+  fs.readdirSync(geotipPath).forEach(file => {
+    const filePath = path.join(geotipPath, file);
+    if (fs.statSync(filePath).isFile()) {
+      archive.file(filePath, { name: `geotip/${file}` });
+    }
+  });
+  
+  archive.finalize();
+  
+  logger.info(`Xray all files downloaded as ZIP: ${zipFilename} (${platform}-${arch}, ${files.length} files)`);
+}
 
 // Get binary checksum
 app.get('/xray/checksum', (req, res) => {
