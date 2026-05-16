@@ -23,10 +23,6 @@ services:
     restart: unless-stopped
     env_file:
       - ./docker/.env
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -53,12 +49,6 @@ services:
       - PORT=4000
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-      - ADMIN_API_KEY=${ADMIN_API_KEY}
     volumes:
       - ./backend/logs:/app/logs
       - ./backend/src/xray-binaries:/app/src/xray-binaries

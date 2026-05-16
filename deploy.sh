@@ -268,10 +268,15 @@ fi
 echo "Step 5: Creating .env file..."
 cd docker
 cat > .env <<EOF
-# Database Configuration
+# Database Configuration (for API)
 DB_USER=voyfy
 DB_PASSWORD=$DB_PASSWORD
 DB_NAME=voyfy_vpn
+
+# Database Configuration (for PostgreSQL container)
+POSTGRES_USER=voyfy
+POSTGRES_PASSWORD=$DB_PASSWORD
+POSTGRES_DB=voyfy_vpn
 
 # JWT Configuration
 JWT_SECRET=$JWT_SECRET
