@@ -21,6 +21,8 @@ services:
     image: postgres:15-alpine
     container_name: voyfy-postgres
     restart: unless-stopped
+    env_file:
+      - ./docker/.env
     environment:
       POSTGRES_USER: ${DB_USER:-voyfy}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-voyfy_secret}
@@ -44,6 +46,8 @@ services:
       dockerfile: Dockerfile
     container_name: voyfy-api
     restart: unless-stopped
+    env_file:
+      - ./docker/.env
     environment:
       - NODE_ENV=production
       - PORT=4000
