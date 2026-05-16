@@ -27,12 +27,12 @@ fi
 # Configuration
 DOMAIN="vip.necsoura.ru"
 PROJECT_DIR="/opt/voyfy-vpn"
-DOCKER_DIR="$PROJECT_DIR/docker"
+DOCKER_DIR="$PROJECT_DIR"
 
 # Check if running from project directory
 if [ -f "$(pwd)/deploy.sh" ]; then
     PROJECT_DIR="$(pwd)"
-    DOCKER_DIR="$PROJECT_DIR/docker"
+    DOCKER_DIR="$PROJECT_DIR"
     echo "Running from existing project directory: $PROJECT_DIR"
 fi
 
@@ -465,7 +465,7 @@ http {
 EOF
 
     # Copy HTTPS config as main nginx.conf
-    cp $DOCKER_DIR/nginx/nginx-https.conf $DOCKER_DIR/nginx/nginx.conf
+    cp $PROJECT_DIR/nginx/nginx-https.conf $PROJECT_DIR/nginx/nginx.conf
     echo "Using HTTPS nginx configuration (copied to nginx.conf)"
 else
     echo "Using HTTP nginx configuration (no SSL)"
@@ -537,9 +537,9 @@ echo "Step 10: Setting up SSL auto-renewal..."
 cat > /etc/letsencrypt/renewal-hooks/post/docker-nginx-reload.sh <<'EOF'
 #!/bin/bash
 # Copy renewed certificates to Docker nginx
-cp /etc/letsencrypt/live/vip.necsoura.ru/fullchain.pem /opt/voyfy-vpn/docker/nginx/ssl/
-cp /etc/letsencrypt/live/vip.necsoura.ru/privkey.pem /opt/voyfy-vpn/docker/nginx/ssl/
-chown -R 1000:1000 /opt/voyfy-vpn/docker/nginx/ssl
+cp /etc/letsencrypt/live/vip.necsoura.ru/fullchain.pem /opt/voyfy-vpn/nginx/ssl/
+cp /etc/letsencrypt/live/vip.necsoura.ru/privkey.pem /opt/voyfy-vpn/nginx/ssl/
+chown -R 1000:1000 /opt/voyfy-vpn/nginx/ssl
 docker compose -f /opt/voyfy-vpn/docker-compose.yml restart nginx
 EOF
 

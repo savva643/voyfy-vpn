@@ -22,7 +22,7 @@ services:
     container_name: voyfy-postgres
     restart: unless-stopped
     env_file:
-      - ./docker/.env
+      - ./.env
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -43,7 +43,7 @@ services:
     container_name: voyfy-api
     restart: unless-stopped
     env_file:
-      - ./docker/.env
+      - ./.env
     environment:
       - NODE_ENV=production
       - PORT=4000
@@ -68,7 +68,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./frontend:/usr/share/nginx/html:ro
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     ports:
       - "80:80"
       - "443:443"
