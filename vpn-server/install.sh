@@ -183,6 +183,9 @@ RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/register" \
       \"password\": \"$HYSTERIA_PASSWORD\",
       \"obfsPassword\": \"$OBFS_PASSWORD\",
       \"masqueradeUrl\": \"https://www.gosuslugi.ru\",
+      \"publicKey\": \"$HYSTERIA_PASSWORD\",
+      \"serverNames\": [\"www.gosuslugi.ru\"],
+      \"shortId\": \"$OBFS_PASSWORD\",
       \"premium\": $SERVER_PREMIUM
     }")
 
