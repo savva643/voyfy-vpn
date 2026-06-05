@@ -65,7 +65,7 @@ static SECURITY_ATTRIBUTES* CreatePipeSecurityAttributes() {
 static SERVICE_STATUS g_serviceStatus = {};
 static SERVICE_STATUS_HANDLE g_statusHandle = nullptr;
 static HANDLE g_stopEvent = nullptr;
-static HANDLE g_xrayProcess = nullptr;
+static HANDLE g_hysteria2Process = nullptr;
 
 static std::string WStringToString(const std::wstring& wstr);
 
@@ -148,11 +148,11 @@ static bool WriteConfigFile(const std::string& configJson) {
     return true;
 }
 
-static bool StopXray() {
-    if (g_xrayProcess) {
-        TerminateProcess(g_xrayProcess, 0);
-        CloseHandle(g_xrayProcess);
-        g_xrayProcess = nullptr;
+static bool StopHysteria2() {
+    if (g_hysteria2Process) {
+        TerminateProcess(g_hysteria2Process, 0);
+        CloseHandle(g_hysteria2Process);
+        g_hysteria2Process = nullptr;
     }
     return true;
 }

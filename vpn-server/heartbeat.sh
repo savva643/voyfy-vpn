@@ -29,7 +29,8 @@ get_stats() {
     
     local users=0
     if command -v ss &> /dev/null; then
-        users=$(ss -tn 2>/dev/null | grep ":8444" | grep ESTAB | wc -l)
+        # Hysteria2 использует UDP (QUIC)
+        users=$(ss -un 2>/dev/null | grep ":8444" | wc -l)
     fi
     
     echo "$load $users"
@@ -53,22 +54,15 @@ sync_clients() {
         return 0
     fi
     
-    local config_file="/usr/local/etc/xray/config.json"
-    if [[ ! -f "$config_file" ]]; then
-        echo "[$(date '+%H:%M:%S')] Xray config not found"
+    # Hysteria2 использует password-based auth, конфиг статический
+    # Проверяем что сервис работает
+    if ! systemctl is-active --quiet hysteria-server; then
+        echo "[$(date '+%H:%M:%S')] Hysteria2 server not running, restarting..."
+        systemctl restart hysteria-server 2>/dev/null || true
         return 1
     fi
     
-    local new_config=$(cat "$config_file" | jq --argjson new_clients "$clients" '.inbounds[0].settings.clients = $new_clients' 2>/dev/null)
-    
-    if [[ -n "$new_config" ]]; then
-        echo "$new_config" > "$config_file"
-        systemctl reload xray 2>/dev/null || systemctl restart xray
-        echo "[$(date '+%H:%M:%S')] Synced $count clients, Xray reloaded"
-    else
-        echo "[$(date '+%H:%M:%S')] Failed to update config"
-        return 1
-    fi
+    echo "[$(date '+%H:%M:%S')] Server OK (Hysteria2 uses static password auth)"
 }
  
 send_heartbeat() {

@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# Hysteria2 VPN Server Installation Script
+# For Russia whitelist bypass (June 2025)
+# Replaces Xray Reality with Hysteria2 (QUIC protocol)
+#
 
 set -e
 
@@ -10,9 +15,10 @@ NC='\033[0m'
 
 PAIRING_CODE="${1:-}"
 API_ENDPOINT="${API_ENDPOINT:-https://vip.necsoura.ru}"
+HYSTERIA_VERSION="v2.5.1"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  VoyFy VPN Server Installer${NC}"
+echo -e "${BLUE}  VoyFy VPN Server Installer (Hysteria2)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -54,29 +60,42 @@ echo -e "${YELLOW}🧹 Очистка старого XRay...${NC}"
 systemctl stop xray 2>/dev/null || true
 systemctl disable xray 2>/dev/null || true
 rm -f /usr/local/bin/xray 2>/dev/null || true
-rm -f /usr/local/etc/xray/config.json 2>/dev/null || true
+rm -rf /usr/local/etc/xray 2>/dev/null || true
 rm -f /etc/systemd/system/xray.service 2>/dev/null || true
+
+# Удаление старого Hysteria если есть
+systemctl stop hysteria-server 2>/dev/null || true
+systemctl disable hysteria-server 2>/dev/null || true
+rm -f /usr/local/bin/hysteria 2>/dev/null || true
+rm -rf /etc/hysteria 2>/dev/null || true
+rm -f /etc/systemd/system/hysteria-server.service 2>/dev/null || true
 systemctl daemon-reload 2>/dev/null || true
 
 # Фаервол
 ufw default deny incoming >/dev/null 2>&1
 ufw default allow outgoing >/dev/null 2>&1
 ufw allow 22/tcp >/dev/null 2>&1
+ufw allow 8444/udp >/dev/null 2>&1
 ufw allow 8444/tcp >/dev/null 2>&1
 ufw --force enable >/dev/null 2>&1
 
-# XRay
-echo -e "${YELLOW}🔧 Установка XRay...${NC}"
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install >/dev/null 2>&1
+# Hysteria2
+echo -e "${YELLOW}🔧 Установка Hysteria2 ${HYSTERIA_VERSION}...${NC}"
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64) HYSTERIA_ARCH="amd64" ;;
+    aarch64) HYSTERIA_ARCH="arm64" ;;
+    armv7l) HYSTERIA_ARCH="armv7" ;;
+    *) echo -e "${RED}❌ Неизвестная архитектура: $ARCH${NC}"; exit 1 ;;
+esac
 
-# Генерация ключей (ИСПРАВЛЕННАЯ ВЕРСИЯ)
-echo -e "${YELLOW}🔐 Генерация ключей...${NC}"
-KEYS=$(/usr/local/bin/xray x25519 2>/dev/null)
+wget -q -O /usr/local/bin/hysteria "https://github.com/apernet/hysteria/releases/download/app/${HYSTERIA_VERSION}/hysteria-linux-${HYSTERIA_ARCH}"
+chmod +x /usr/local/bin/hysteria
 
-# Парсим ключи Xray v26.3.27
-PRIVATE_KEY=$(echo "$KEYS" | grep "PrivateKey:" | sed 's/PrivateKey: //' | tr -d ' ')
-PUBLIC_KEY=$(echo "$KEYS" | grep "Password (PublicKey):" | sed 's/Password (PublicKey): //' | tr -d ' ')
-SHORT_ID=$(openssl rand -hex 4)
+# Генерация пароля
+echo -e "${YELLOW}🔐 Генерация пароля...${NC}"
+HYSTERIA_PASSWORD=$(openssl rand -base64 32)
+OBFS_PASSWORD=$(openssl rand -hex 16)
 
 # IP адрес с fallback (принудительно IPv4)
 SERVER_IP=$(curl -s --max-time 10 -4 ifconfig.me)
@@ -87,79 +106,66 @@ if [ -z "$SERVER_IP" ]; then
     SERVER_IP=$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 fi
 
-if [ -z "$SERVER_IP" ] || [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
-    echo -e "${RED}❌ Ошибка получения IP или ключей${NC}"
+if [ -z "$SERVER_IP" ]; then
+    echo -e "${RED}❌ Ошибка получения IP${NC}"
     exit 1
 fi
 
 echo "  IP: $SERVER_IP"
-echo "  Keys: OK"
+echo "  Password: OK"
+echo "  Obfs: OK"
 
-# Конфигурация XRay
-mkdir -p /usr/local/etc/xray /var/log/xray
-cat > /usr/local/etc/xray/config.json <<XRAYEOF
-{
-  "log": {"loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log"},
-  "inbounds": [{
-    "port": 8444, "protocol": "vless",
-    "settings": {"clients": [], "decryption": "none"},
-    "streamSettings": {
-      "network": "tcp", "security": "reality",
-      "realitySettings": {
-        "show": false,
-        "dest": "www.yandex.ru:443",
-        "xver": 0,
-        "serverNames": ["www.yandex.ru", "yandex.ru", "www.youtube.com", "youtube.com"],
-        "privateKey": "$PRIVATE_KEY",
-        "shortIds": ["", "$SHORT_ID"]
-      }
-    },
-    "sniffing": {"enabled": true, "destOverride": ["http", "tls", "quic"]}
-  },
-  {
-    "tag": "tun-in",
-    "protocol": "tun",
-    "settings": {
-      "ip": ["10.0.0.1/30"],
-      "mtu": 1500,
-      "autoRoute": true,
-      "strictRoute": true
-    }
-  }],
-  "outbounds": [
-    {"protocol": "freedom", "tag": "direct"},
-    {"protocol": "blackhole", "tag": "block"}
-  ],
-  "routing": {
-    "rules": [
-      {
-        "type": "field",
-        "inboundTag": ["tun-in"],
-        "outboundTag": "direct"
-      }
-    ]
-  }
-}
-XRAYEOF
+# Конфигурация Hysteria2
+mkdir -p /etc/hysteria /var/log/hysteria
+cat > /etc/hysteria/config.yaml <<HYSTERIAEOF
+listen: :8444
+tls:
+  cert: /etc/hysteria/server.crt
+  key: /etc/hysteria/server.key
+auth:
+  type: password
+  password: "$HYSTERIA_PASSWORD"
+obfs:
+  type: salamander
+  salamander:
+    password: "$OBFS_PASSWORD"
+masquerade:
+  type: proxy
+  proxy:
+    url: https://www.gosuslugi.ru
+    rewriteHost: true
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+HYSTERIAEOF
 
-# Сервис XRay
-cat > /etc/systemd/system/xray.service <<EOF
+# Генерация самоподписанных сертификатов
+openssl req -x509 -newkey rsa:4096 -keyout /etc/hysteria/server.key -out /etc/hysteria/server.crt -days 365 -nodes -subj "/CN=voyfy-vpn" 2>/dev/null
+
+# Сервис Hysteria2
+cat > /etc/systemd/system/hysteria-server.service <<EOF
 [Unit]
-Description=XRay Service
+Description=Hysteria2 Server Service
 After=network.target
 
 [Service]
+Type=simple
 User=root
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+ExecStart=/usr/local/bin/hysteria server -c /etc/hysteria/config.yaml
 Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/hysteria/hysteria.log
+StandardError=append:/var/log/hysteria/hysteria.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable xray
-systemctl start xray
+systemctl enable hysteria-server
+systemctl start hysteria-server
 
 # Регистрация
 echo -e "${YELLOW}🌐 Регистрация в API...${NC}"
@@ -173,9 +179,10 @@ RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/servers/register" \
       \"countryCode\": \"$SERVER_COUNTRY_CODE\",
       \"host\": \"$SERVER_IP\",
       \"port\": 8444,
-      \"publicKey\": \"$PUBLIC_KEY\",
-      \"serverNames\": [\"www.yandex.ru\", \"vk.com\", \"ok.ru\", \"mail.ru\", \"ya.ru\", \"dzen.ru\"],
-      \"shortId\": \"$SHORT_ID\",
+      \"protocol\": \"hysteria2\",
+      \"password\": \"$HYSTERIA_PASSWORD\",
+      \"obfsPassword\": \"$OBFS_PASSWORD\",
+      \"masqueradeUrl\": \"https://www.gosuslugi.ru\",
       \"premium\": $SERVER_PREMIUM
     }")
 

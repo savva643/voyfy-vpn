@@ -6,12 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
 import '../config/api_config.dart';
 
-/// Xray Binary Downloader
-/// Downloads platform-specific Xray binary from backend server
-class XrayDownloader {
-  static final XrayDownloader _instance = XrayDownloader._internal();
-  factory XrayDownloader() => _instance;
-  XrayDownloader._internal();
+/// Hysteria2 Binary Downloader
+/// Downloads platform-specific Hysteria2 binary from GitHub releases
+class Hysteria2Downloader {
+  static final Hysteria2Downloader _instance = Hysteria2Downloader._internal();
+  factory Hysteria2Downloader() => _instance;
+  Hysteria2Downloader._internal();
 
   /// Download progress callback: (downloadedBytes, totalBytes, percentage)
   void Function(int downloaded, int total, double percentage)? onProgress;
@@ -54,7 +54,7 @@ class XrayDownloader {
       platform: platform,
       arch: arch,
       extension: rawPlatform == 'windows' ? '.exe' : '',
-      targetName: 'xray-${platform}-${arch}',
+      targetName: 'hysteria2-${platform}-${arch}',
     );
   }
 
@@ -64,11 +64,11 @@ class XrayDownloader {
     return Directory('C:\\Users\\Public\\VoyfyVPN');
   }
 
-  /// Get path where Xray binary should be stored
-  /// Returns path to extracted xray binary, or expected path if not found
+  /// Get path where Hysteria2 binary should be stored
+  /// Returns path to extracted hysteria2 binary, or expected path if not found
   Future<String> get binaryPath async {
-    // First try to find existing xray binary
-    final existing = await _findXrayBinary();
+    // First try to find existing hysteria2 binary
+    final existing = await _findHysteria2Binary();
     if (existing != null) {
       return existing;
     }
@@ -80,7 +80,7 @@ class XrayDownloader {
       if (!await publicDir.exists()) {
         await publicDir.create(recursive: true);
       }
-      return '${publicDir.path}\\xray.exe';
+      return '${publicDir.path}\\hysteria2.exe';
     } else {
       // Linux/macOS: use application support directory
       final appDir = await getApplicationSupportDirectory();
@@ -88,12 +88,12 @@ class XrayDownloader {
       if (!await binDir.exists()) {
         await binDir.create(recursive: true);
       }
-      return '${binDir.path}/xray';
+      return '${binDir.path}/hysteria2';
     }
   }
 
-  /// Find xray binary in the correct directory
-  Future<String?> _findXrayBinary() async {
+  /// Find Hysteria2 binary in the correct directory
+  Future<String?> _findHysteria2Binary() async {
     Directory searchDir;
     if (Platform.isWindows) {
       searchDir = _getWindowsPublicDir();
@@ -106,13 +106,13 @@ class XrayDownloader {
       return null;
     }
     
-    // Look for xray binary (exact match: 'xray' or 'xray.exe')
+    // Look for hysteria2 binary (exact match: 'hysteria2' or 'hysteria2.exe')
     await for (final entity in searchDir.list()) {
       if (entity is File) {
         final fileName = entity.path.split(Platform.pathSeparator).last;
-        if (fileName == 'xray' || fileName == 'xray.exe') {
+        if (fileName == 'hysteria2' || fileName == 'hysteria2.exe') {
           final size = await entity.length();
-          if (size > 10 * 1024 * 1024) {
+          if (size > 5 * 1024 * 1024) { // Hysteria2 ~20MB
             return entity.path;
           }
         }
@@ -121,82 +121,51 @@ class XrayDownloader {
     return null;
   }
 
-  /// Check if Xray binary exists and is valid
+  /// Check if Hysteria2 binary exists and is valid
   Future<bool> isBinaryExists() async {
-    final path = await _findXrayBinary();
+    final path = await _findHysteria2Binary();
     return path != null;
   }
 
-  /// Download Xray binary from backend (ZIP archive)
+  /// Download Hysteria2 binary from GitHub releases
   /// Extracts and returns path to binary on success, null on failure
-  Future<String?> downloadXray() async {
+  Future<String?> downloadHysteria2() async {
     try {
       final info = platformInfo;
-      print('XRAY DOWNLOADER: Platform: ${info.platform}, Arch: ${info.arch}');
+      print('HYSTERIA2 DOWNLOADER: Platform: ${info.platform}, Arch: ${info.arch}');
       
-      // Backend endpoint for Xray binary (returns ZIP)
-      final downloadUrl = '${ApiConfig.baseUrl}/xray/download?platform=${info.platform}&arch=${info.arch}';
-      print('XRAY DOWNLOADER: Downloading from: $downloadUrl');
+      // GitHub release URL for Hysteria2 v2.5.1
+      const version = 'app/v2.5.1';
+      final downloadUrl = 'https://github.com/apernet/hysteria/releases/download/$version/hysteria-${info.platform}-${info.arch}${info.extension}';
+      print('HYSTERIA2 DOWNLOADER: Downloading from: $downloadUrl');
       
       final response = await http.get(Uri.parse(downloadUrl));
       
       if (response.statusCode != 200) {
-        print('XRAY DOWNLOADER: Download failed with status ${response.statusCode}');
+        print('HYSTERIA2 DOWNLOADER: Download failed with status ${response.statusCode}');
         return null;
       }
       
-      print('XRAY DOWNLOADER: Downloaded ${response.bodyBytes.length} bytes, extracting ZIP...');
+      print('HYSTERIA2 DOWNLOADER: Downloaded ${response.bodyBytes.length} bytes');
       
-      // Extract ZIP archive
-      final archive = ZipDecoder().decodeBytes(response.bodyBytes);
+      // Get target path
+      final targetPath = await binaryPath;
+      final file = File(targetPath);
       
-      // Get target directory based on platform
-      Directory extractDir;
-      if (Platform.isWindows) {
-        extractDir = _getWindowsPublicDir();
-      } else {
-        final appDir = await getApplicationSupportDirectory();
-        extractDir = Directory('${appDir.path}/bin');
-      }
-      
-      if (!await extractDir.exists()) {
-        await extractDir.create(recursive: true);
-      }
-      
-      String? xrayPath;
-      
-      for (final file in archive) {
-        final fileName = file.name;
-        final separator = Platform.isWindows ? '\\' : '/';
-        final filePath = '${extractDir.path}$separator$fileName';
-        
-        if (file.isFile) {
-          final data = file.content as List<int>;
-          await File(filePath).writeAsBytes(data);
-          print('XRAY DOWNLOADER: Extracted: $fileName (${data.length} bytes)');
-          
-          // Find xray binary (xray on Linux/macOS, xray.exe on Windows)
-          if (fileName == 'xray' || fileName == 'xray.exe') {
-            xrayPath = filePath;
-          }
-        }
-      }
-      
-      if (xrayPath == null) {
-        print('XRAY DOWNLOADER: xray binary not found in archive');
-        return null;
-      }
+      // Write binary directly (no ZIP extraction needed for Hysteria2)
+      await file.writeAsBytes(response.bodyBytes);
+      print('HYSTERIA2 DOWNLOADER: Saved binary to: $targetPath');
       
       // Make executable on Unix systems
       if (!Platform.isWindows) {
-        await Process.run('chmod', ['+x', xrayPath]);
+        await Process.run('chmod', ['+x', targetPath]);
       }
       
-      print('XRAY DOWNLOADER: Extracted xray to: $xrayPath');
-      return xrayPath;
+      print('HYSTERIA2 DOWNLOADER: Hysteria2 ready at: $targetPath');
+      return targetPath;
       
     } catch (e) {
-      print('XRAY DOWNLOADER: Error downloading: $e');
+      print('HYSTERIA2 DOWNLOADER: Error downloading: $e');
       return null;
     }
   }
@@ -213,74 +182,61 @@ class XrayDownloader {
       final hash = sha256.convert(bytes);
       final hashString = hash.toString();
       
-      print('XRAY DOWNLOADER: SHA256: $hashString');
+      print('HYSTERIA2 DOWNLOADER: SHA256: $hashString');
       
       return hashString == expectedHash;
     } catch (e) {
-      print('XRAY DOWNLOADER: Error verifying checksum: $e');
+      print('HYSTERIA2 DOWNLOADER: Error verifying checksum: $e');
       return false;
     }
   }
 
-  /// Get checksum from backend for verification
+  /// Get checksum from GitHub releases for verification
+  /// Note: Hysteria2 doesn't provide checksum API, skipping
   Future<String?> fetchChecksum() async {
-    try {
-      final info = platformInfo;
-      final url = '${ApiConfig.baseUrl}/xray/checksum?platform=${info.platform}&arch=${info.arch}';
-      
-      final response = await http.get(Uri.parse(url));
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['sha256'] as String?;
-      }
-      
-      return null;
-    } catch (e) {
-      print('XRAY DOWNLOADER: Error fetching checksum: $e');
-      return null;
-    }
+    // Hysteria2 doesn't provide checksums via API
+    return null;
   }
 
   /// Full download and verify flow
   Future<String?> downloadAndVerify() async {
     // Check if already exists
     if (await isBinaryExists()) {
-      print('XRAY DOWNLOADER: Binary already exists');
+      print('HYSTERIA2 DOWNLOADER: Binary already exists');
       final path = await binaryPath;
       return path;
     }
     
     // Download
-    final path = await downloadXray();
+    final path = await downloadHysteria2();
     if (path == null) {
       return null;
     }
     
-    // Verify (optional)
+    // Verify (optional) - Hysteria2 doesn't provide checksums
     final expectedHash = await fetchChecksum();
     if (expectedHash != null) {
       final isValid = await verifyChecksum(expectedHash);
       if (!isValid) {
-        print('XRAY DOWNLOADER: Checksum verification failed!');
+        print('HYSTERIA2 DOWNLOADER: Checksum verification failed!');
         // Delete corrupted file
         await File(path).delete();
         return null;
       }
-      print('XRAY DOWNLOADER: Checksum verified successfully');
+      print('HYSTERIA2 DOWNLOADER: Checksum verified successfully');
     }
     
     return path;
   }
 
-  /// Download and install Xray binary
+  /// Download and install Hysteria2 binary
   Future<String?> downloadAndInstall() async {
     return await downloadAndVerify();
   }
 
-  /// Static method to download and verify Xray (used by VpnService)
-  static Future<bool> downloadAndVerifyXray() async {
-    final downloader = XrayDownloader();
+  /// Static method to download and verify Hysteria2 (used by VpnService)
+  static Future<bool> downloadAndVerifyHysteria2() async {
+    final downloader = Hysteria2Downloader();
     final path = await downloader.downloadAndInstall();
     return path != null;
   }

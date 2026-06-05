@@ -3,37 +3,28 @@ const config = require('../config');
 const logger = require('../utils/logger');
 
 /**
- * Build VLESS URL for user
- * Format: vless://uuid@host:port?params#name
+ * Build Hysteria2 URI for user
+ * Format: hysteria2://password@host:port?params#name
  */
-const buildVlessUrl = (userUuid, server, name) => {
-  // Remove Hash32: prefix from public_key if present
-  const publicKey = (server.public_key || config.server.publicKey).replace(/^Hash32:\s*/, '');
-
+const buildHysteria2Url = (password, server, name) => {
   const params = new URLSearchParams({
-    security: 'reality',
-    encryption: 'none',
-    pbk: publicKey,
-    headerType: 'none',
-    fp: 'chrome',
-    type: 'tcp',
-    flow: 'xtls-rprx-vision',
-    sni: config.server.serverName,
-    sid: server.short_id || config.server.shortId,
+    obfs: 'salamander',
+    'obfs-password': server.obfs_password || config.server.obfsPassword,
+    sni: server.masquerade_url ? new URL(server.masquerade_url).hostname : 'www.gosuslugi.ru',
   });
 
-  return `vless://${userUuid}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(name)}`;
+  return `hysteria2://${password}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(name)}`;
 };
 
 /**
  * Generate subscription content for user
- * Returns base64 encoded VLESS links
+ * Returns base64 encoded Hysteria2 links
  */
 const generateSubscription = async (userId) => {
   try {
-    // Get user info
+    // Get user info - Hysteria2 uses server password, not user UUID
     const userResult = await query(
-      'SELECT uuid FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id FROM users WHERE id = $1 AND is_active = true',
       [userId]
     );
 
@@ -41,25 +32,23 @@ const generateSubscription = async (userId) => {
       throw new Error('User not found or inactive');
     }
 
-    const userUuid = userResult.rows[0].uuid;
-
-    // Get active servers
+    // Get active servers with Hysteria2 credentials
     const serversResult = await query(
-      'SELECT * FROM vpn_servers WHERE is_active = true ORDER BY country, name',
-      []
+      'SELECT * FROM vpn_servers WHERE is_active = true AND protocol = $1 ORDER BY country, name',
+      ['hysteria2']
     );
 
     if (serversResult.rows.length === 0) {
-      throw new Error('No active servers available');
+      throw new Error('No active Hysteria2 servers available');
     }
 
-    // Generate VLESS URLs for each server
-    const vlessUrls = serversResult.rows.map(server =>
-      buildVlessUrl(userUuid, server, server.name || `${server.country}-${server.host}`)
+    // Generate Hysteria2 URIs for each server
+    const hysteria2Urls = serversResult.rows.map(server =>
+      buildHysteria2Url(server.password, server, server.name || `${server.country}-${server.host}`)
     );
 
     // Join with newlines and encode
-    const subscriptionContent = vlessUrls.join('\n');
+    const subscriptionContent = hysteria2Urls.join('\n');
     const base64Content = Buffer.from(subscriptionContent).toString('base64');
 
     return {
@@ -71,10 +60,10 @@ const generateSubscription = async (userId) => {
         country: server.country,
         host: server.host,
         port: server.port,
-        protocol: 'vless',
-        security: 'reality'
+        protocol: 'hysteria2',
+        security: 'tls'
       })),
-      rawUrls: vlessUrls
+      rawUrls: hysteria2Urls
     };
   } catch (err) {
     logger.error('Generate subscription error', err);
@@ -152,7 +141,7 @@ const getSubscriptionJson = async (req, res) => {
       data: {
         servers: subscription.servers.map((server, index) => ({
           ...server,
-          vlessUrl: subscription.rawUrls[index],
+          hysteria2Url: subscription.rawUrls[index],
         })),
       }
     });
@@ -192,13 +181,13 @@ const updateUsage = async (req, res) => {
 };
 
 /**
- * Get user's VLESS configuration for specific server
+ * Get user's Hysteria2 configuration for specific server
  */
 const getUserConfig = async (userId, serverId) => {
   try {
     // Get user info
     const userResult = await query(
-      'SELECT uuid FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id FROM users WHERE id = $1 AND is_active = true',
       [userId]
     );
 
@@ -209,34 +198,33 @@ const getUserConfig = async (userId, serverId) => {
       };
     }
 
-    const userUuid = userResult.rows[0].uuid;
-
-    // Get server info
+    // Get Hysteria2 server info
     const serverResult = await query(
-      'SELECT * FROM vpn_servers WHERE id = $1 AND is_active = true',
-      [serverId]
+      'SELECT * FROM vpn_servers WHERE id = $1 AND is_active = true AND protocol = $2',
+      [serverId, 'hysteria2']
     );
 
     if (serverResult.rows.length === 0) {
       return {
         success: false,
-        message: 'Server not found or inactive'
+        message: 'Hysteria2 server not found or inactive'
       };
     }
 
     const server = serverResult.rows[0];
 
-    // Generate VLESS URL using buildVlessUrl function (removes Hash32 prefix)
-    const vlessUrl = buildVlessUrl(userUuid, server, server.name || `${server.country}-${server.host}`);
+    // Generate Hysteria2 URI using buildHysteria2Url function
+    const hysteria2Url = buildHysteria2Url(server.password, server, server.name || `${server.country}-${server.host}`);
 
     return {
       success: true,
       config: {
-        vlessUrl: vlessUrl,
+        hysteria2Url: hysteria2Url,
         serverId: server.id,
         serverName: server.name || `${server.country}-${server.host}`,
         host: server.host,
-        port: server.port
+        port: server.port,
+        protocol: 'hysteria2'
       }
     };
   } catch (err) {
@@ -254,5 +242,5 @@ module.exports = {
   updateUsage,
   generateSubscription,
   getUserConfig,
-  buildVlessUrl,
+  buildHysteria2Url,
 };

@@ -5,20 +5,28 @@ import 'dart:ffi';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_vless/flutter_vless.dart';
 import 'package:http/http.dart' as http;
-import 'package:archive/archive.dart';
-import 'xray_downloader.dart';
+import 'hysteria2_downloader.dart';
 
-/// Fix VLESS URL for IPv6 addresses (add brackets if missing)
-String _fixVlessUrl(String url) {
-  // Match vless://uuid@IPv6:port?... or vless://uuid@IPv6?...
-  // IPv6 address contains multiple colons, IPv4 contains max 1 colon for port separator
-  final ipv6Regex = RegExp(r'vless://([^@]+)@([0-9a-fA-F:]+:[0-9a-fA-F:]+)(:\d+)');
-  final match = ipv6Regex.firstMatch(url);
-  if (match != null) {
-    final host = match.group(2)!;
-    final port = match.group(3)!;
+/// Parse Hysteria2 URI and extract connection parameters
+/// Format: hysteria2://password@host:port?obfs=salamander&obfs-password=xxx&sni=xxx
+Map<String, dynamic>? _parseHysteria2Uri(String uri) {
+  try {
+    final url = Uri.parse(uri);
+    if (url.scheme != 'hysteria2') return null;
+    
+    return {
+      'password': url.userInfo,
+      'host': url.host,
+      'port': url.port,
+      'obfs': url.queryParameters['obfs'],
+      'obfsPassword': url.queryParameters['obfs-password'],
+      'sni': url.queryParameters['sni'],
+    };
+  } catch (e) {
+    print('VPN: Error parsing Hysteria2 URI: $e');
+    return null;
+  }
     // Check if host is IPv6 (contains at least 2 colons and not already in brackets)
     if (!host.startsWith('[') && host.contains(':')) {
       // Replace with bracketed IPv6 + port outside: [ipv6]:port
