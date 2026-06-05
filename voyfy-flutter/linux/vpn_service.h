@@ -29,6 +29,9 @@ class VpnService {
   
   // Set status callback
   void SetStatusCallback(std::function<void(const std::string&)> callback);
+  
+  // Get path to xray binary (public for main.cc)
+  std::string GetXrayPath();
 
  private:
   VpnService() = default;
@@ -42,7 +45,6 @@ class VpnService {
   bool ConfigureRoutes();
   bool RestoreRoutes();
   
-  std::string GetXrayPath();
   std::string GetConfigPath();
   
   FlMethodChannel* channel_ = nullptr;

@@ -17,6 +17,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <vector>
 
 namespace voyfy {
 
@@ -237,19 +238,37 @@ bool VpnService::RestoreRoutes() {
 }
 
 std::string VpnService::GetXrayPath() {
-  // Get executable directory
-  gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
-  if (!exe_path) {
-    return "";
+  // Try multiple possible locations for xray binary
+  const char* home = g_getenv("HOME");
+  std::vector<std::string> possible_paths;
+  
+  // 1. ~/bin/xray (where Dart XrayDownloader saves it)
+  if (home) {
+    possible_paths.push_back(std::string(home) + "/bin/xray");
   }
   
-  gchar* dir = g_path_get_dirname(exe_path);
-  g_free(exe_path);
+  // 2. Same directory as executable
+  gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path) {
+    gchar* dir = g_path_get_dirname(exe_path);
+    g_free(exe_path);
+    possible_paths.push_back(std::string(dir) + "/xray");
+    g_free(dir);
+  }
   
-  std::string xray_path = std::string(dir) + "/xray";
-  g_free(dir);
+  // 3. System paths
+  possible_paths.push_back("/usr/local/bin/xray");
+  possible_paths.push_back("/opt/voyfy/xray");
   
-  return xray_path;
+  // Find first existing xray
+  for (const auto& path : possible_paths) {
+    if (access(path.c_str(), X_OK) == 0) {
+      return path;
+    }
+  }
+  
+  // Return default if not found
+  return possible_paths.empty() ? "" : possible_paths[0];
 }
 
 std::string VpnService::GetConfigPath() {

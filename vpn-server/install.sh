@@ -106,9 +106,12 @@ cat > /usr/local/etc/xray/config.json <<XRAYEOF
     "streamSettings": {
       "network": "tcp", "security": "reality",
       "realitySettings": {
-        "show": false, "dest": "${SERVER_NAME:-vip.necsoura.ru}:443", "xver": 0,
-        "serverNames": ["${SERVER_NAME:-vip.necsoura.ru}"],
-        "privateKey": "$PRIVATE_KEY", "shortIds": ["", "$SHORT_ID"]
+        "show": false,
+        "dest": "www.yandex.ru:443",
+        "xver": 0,
+        "serverNames": ["www.yandex.ru", "yandex.ru", "www.youtube.com", "youtube.com"],
+        "privateKey": "$PRIVATE_KEY",
+        "shortIds": ["", "$SHORT_ID"]
       }
     },
     "sniffing": {"enabled": true, "destOverride": ["http", "tls", "quic"]}

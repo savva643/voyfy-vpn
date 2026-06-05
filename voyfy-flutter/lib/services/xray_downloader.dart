@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive.dart';
 import '../config/api_config.dart';
 
 /// Xray Binary Downloader
@@ -57,88 +58,142 @@ class XrayDownloader {
     );
   }
 
+  /// Get Windows Public app data directory (matches C++ code)
+  Directory _getWindowsPublicDir() {
+    // C:\Users\Public\VoyfyVPN - matches Windows C++ GetAppDataDir()
+    return Directory('C:\\Users\\Public\\VoyfyVPN');
+  }
+
   /// Get path where Xray binary should be stored
+  /// Returns path to extracted xray binary, or expected path if not found
   Future<String> get binaryPath async {
-    final info = platformInfo;
-    final appDir = await getApplicationSupportDirectory();
-    final binDir = Directory('${appDir.path}/bin');
-    
-    if (!await binDir.exists()) {
-      await binDir.create(recursive: true);
+    // First try to find existing xray binary
+    final existing = await _findXrayBinary();
+    if (existing != null) {
+      return existing;
     }
     
-    return '${binDir.path}/${info.targetName}${info.extension}';
+    // Return expected path for new download
+    if (Platform.isWindows) {
+      // Windows: use Public directory (matches C++ code)
+      final publicDir = _getWindowsPublicDir();
+      if (!await publicDir.exists()) {
+        await publicDir.create(recursive: true);
+      }
+      return '${publicDir.path}\\xray.exe';
+    } else {
+      // Linux/macOS: use application support directory
+      final appDir = await getApplicationSupportDirectory();
+      final binDir = Directory('${appDir.path}/bin');
+      if (!await binDir.exists()) {
+        await binDir.create(recursive: true);
+      }
+      return '${binDir.path}/xray';
+    }
+  }
+
+  /// Find xray binary in the correct directory
+  Future<String?> _findXrayBinary() async {
+    Directory searchDir;
+    if (Platform.isWindows) {
+      searchDir = _getWindowsPublicDir();
+    } else {
+      final appDir = await getApplicationSupportDirectory();
+      searchDir = Directory('${appDir.path}/bin');
+    }
+    
+    if (!await searchDir.exists()) {
+      return null;
+    }
+    
+    // Look for xray binary (exact match: 'xray' or 'xray.exe')
+    await for (final entity in searchDir.list()) {
+      if (entity is File) {
+        final fileName = entity.path.split(Platform.pathSeparator).last;
+        if (fileName == 'xray' || fileName == 'xray.exe') {
+          final size = await entity.length();
+          if (size > 10 * 1024 * 1024) {
+            return entity.path;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /// Check if Xray binary exists and is valid
   Future<bool> isBinaryExists() async {
-    final path = await binaryPath;
-    final file = File(path);
-    
-    if (!await file.exists()) {
-      return false;
-    }
-    
-    // Check file size (should be > 10MB)
-    final size = await file.length();
-    if (size < 10 * 1024 * 1024) {
-      print('XRAY DOWNLOADER: Binary too small (${size} bytes), likely corrupted');
-      return false;
-    }
-    
-    return true;
+    final path = await _findXrayBinary();
+    return path != null;
   }
 
-  /// Download Xray binary from backend
-  /// Returns path to binary on success, null on failure
+  /// Download Xray binary from backend (ZIP archive)
+  /// Extracts and returns path to binary on success, null on failure
   Future<String?> downloadXray() async {
     try {
       final info = platformInfo;
       print('XRAY DOWNLOADER: Platform: ${info.platform}, Arch: ${info.arch}');
       
-      // Backend endpoint for Xray binary
+      // Backend endpoint for Xray binary (returns ZIP)
       final downloadUrl = '${ApiConfig.baseUrl}/xray/download?platform=${info.platform}&arch=${info.arch}';
       print('XRAY DOWNLOADER: Downloading from: $downloadUrl');
       
-      final request = http.Request('GET', Uri.parse(downloadUrl));
-      
-      // Add auth headers if needed
-      // request.headers['Authorization'] = 'Bearer $token';
-      
-      final response = await http.Client().send(request);
+      final response = await http.get(Uri.parse(downloadUrl));
       
       if (response.statusCode != 200) {
         print('XRAY DOWNLOADER: Download failed with status ${response.statusCode}');
         return null;
       }
       
-      final contentLength = response.contentLength ?? 0;
-      print('XRAY DOWNLOADER: Content length: $contentLength bytes');
+      print('XRAY DOWNLOADER: Downloaded ${response.bodyBytes.length} bytes, extracting ZIP...');
       
-      final path = await binaryPath;
-      final file = File(path);
-      final sink = file.openWrite();
+      // Extract ZIP archive
+      final archive = ZipDecoder().decodeBytes(response.bodyBytes);
       
-      int downloaded = 0;
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        downloaded += chunk.length;
+      // Get target directory based on platform
+      Directory extractDir;
+      if (Platform.isWindows) {
+        extractDir = _getWindowsPublicDir();
+      } else {
+        final appDir = await getApplicationSupportDirectory();
+        extractDir = Directory('${appDir.path}/bin');
+      }
+      
+      if (!await extractDir.exists()) {
+        await extractDir.create(recursive: true);
+      }
+      
+      String? xrayPath;
+      
+      for (final file in archive) {
+        final fileName = file.name;
+        final separator = Platform.isWindows ? '\\' : '/';
+        final filePath = '${extractDir.path}$separator$fileName';
         
-        if (contentLength > 0 && onProgress != null) {
-          final percentage = (downloaded / contentLength) * 100;
-          onProgress!(downloaded, contentLength, percentage);
+        if (file.isFile) {
+          final data = file.content as List<int>;
+          await File(filePath).writeAsBytes(data);
+          print('XRAY DOWNLOADER: Extracted: $fileName (${data.length} bytes)');
+          
+          // Find xray binary (xray on Linux/macOS, xray.exe on Windows)
+          if (fileName == 'xray' || fileName == 'xray.exe') {
+            xrayPath = filePath;
+          }
         }
       }
       
-      await sink.close();
+      if (xrayPath == null) {
+        print('XRAY DOWNLOADER: xray binary not found in archive');
+        return null;
+      }
       
       // Make executable on Unix systems
       if (!Platform.isWindows) {
-        await Process.run('chmod', ['+x', path]);
+        await Process.run('chmod', ['+x', xrayPath]);
       }
       
-      print('XRAY DOWNLOADER: Download complete: $path');
-      return path;
+      print('XRAY DOWNLOADER: Extracted xray to: $xrayPath');
+      return xrayPath;
       
     } catch (e) {
       print('XRAY DOWNLOADER: Error downloading: $e');

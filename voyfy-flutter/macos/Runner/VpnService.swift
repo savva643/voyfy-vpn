@@ -123,9 +123,15 @@ class VpnService: NSObject {
     private func startXray(configPath: String) -> Bool {
         // Get Xray path from app bundle
         guard let xrayPath = Bundle.main.path(forResource: "xray", ofType: nil) else {
-            // Try to find in the same directory as the app
+            // Try to find in multiple locations
             let fileManager = FileManager.default
-            let possiblePaths = [
+            
+            // 1. Application Support/bin/xray (where Dart XrayDownloader saves it)
+            let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            let dartPath = appSupportURL?.appendingPathComponent("bin/xray").path
+            
+            let possiblePaths: [String?] = [
+                dartPath,
                 Bundle.main.bundlePath + "/xray",
                 Bundle.main.bundlePath + "/../xray",
                 "/usr/local/bin/xray",
@@ -133,7 +139,7 @@ class VpnService: NSObject {
             ]
             
             var foundPath: String?
-            for path in possiblePaths {
+            for path in possiblePaths.compactMap({ $0 }) {
                 if fileManager.fileExists(atPath: path) {
                     foundPath = path
                     break
@@ -141,10 +147,12 @@ class VpnService: NSObject {
             }
             
             guard let xray = foundPath else {
-                print("Xray binary not found")
+                print("Xray binary not found. Searched paths:")
+                possiblePaths.forEach { print("  - \($0 ?? "nil")") }
                 return false
             }
             
+            print("Found xray at: \(xray)")
             return startXrayProcess(xrayPath: xray, configPath: configPath)
         }
         

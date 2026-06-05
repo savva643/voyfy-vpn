@@ -788,6 +788,10 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
       }
     },
     {
+      "tag": "dns",
+      "protocol": "dns"
+    },
+    {
       "tag": "direct",
       "protocol": "freedom"
     },
@@ -801,6 +805,17 @@ std::string CreateXrayConfig(const std::string& vlessUrl) {
       {
         "type": "field",
         "inboundTag": ["tun-in"],
+        "outboundTag": "proxy"
+      },
+      {
+        "type": "field",
+        "port": 53,
+        "network": "udp",
+        "outboundTag": "dns"
+      },
+      {
+        "type": "field",
+        "ip": ["1.1.1.1", "8.8.8.8"],
         "outboundTag": "proxy"
       },
       {

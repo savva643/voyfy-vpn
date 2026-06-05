@@ -101,9 +101,15 @@ class TrayManager {
     }
 
     print('TRAY MANAGER: Building menu...');
+    
+    // Get fresh status directly from service (not stale provider)
+    final vpnService = VpnService();
+    final currentStatus = await vpnService.getConnectionStatus();
+    final isConnected = currentStatus == VpnStatus.connected;
+    final isConnecting = currentStatus == VpnStatus.connecting;
+    
+    // Get server info from provider
     final vpnProvider = context.read<VpnProvider>();
-    final isConnected = vpnProvider.status == VpnStatus.connected;
-    final isConnecting = vpnProvider.status == VpnStatus.connecting;
     final selectedServer = vpnProvider.selectedServer;
 
     // Get current locale from context
@@ -164,7 +170,14 @@ class TrayManager {
   /// Update tray menu when state changes
   Future<void> updateMenu() async {
     if (!_isInitialized || _context == null || _systemTray == null) return;
-    await _buildMenu(_context!);
+    
+    // Use Builder to get fresh context with current providers
+    final element = _context!.findAncestorStateOfType<NavigatorState>()?.context;
+    if (element != null) {
+      await _buildMenu(element);
+    } else {
+      await _buildMenu(_context!);
+    }
   }
   
   /// Update tray icon based on VPN status

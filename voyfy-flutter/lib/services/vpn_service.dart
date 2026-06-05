@@ -83,12 +83,23 @@ class VpnService {
   static const MethodChannel _linuxDataChannel = MethodChannel('com.voyfy.vpn/linux_data');
   static const MethodChannel _macosChannel = MethodChannel('com.voyfy.vpn/macos');
   static const MethodChannel _macosDataChannel = MethodChannel('com.voyfy.vpn/macos_data');
+  
+  // Android MethodChannel for data usage
+  static const MethodChannel _androidChannel = MethodChannel('com.voyfy.vpn/android');
+  static const MethodChannel _androidDataChannel = MethodChannel('com.voyfy.vpn/android_data');
 
   // Platform check
   bool get _isWindows => Platform.isWindows;
   bool get _isLinux => Platform.isLinux;
   bool get _isMacOS => Platform.isMacOS;
+  bool get _isAndroid => Platform.isAndroid;
+  bool get _isIOS => Platform.isIOS;
   bool get _isDesktop => _isWindows || _isLinux || _isMacOS;
+  
+  // Data usage tracking for mobile
+  Timer? _dataUsageTimer;
+  int _lastBytesReceived = 0;
+  int _lastBytesSent = 0;
 
   Stream<VpnStatus> get onStatusChanged => _statusController.stream;
   Stream<DataUsage> get onDataUsageUpdated => _dataUsageController.stream;
@@ -199,6 +210,20 @@ class VpnService {
           providerBundleIdentifier: 'com.voyfy.vpn.VPNProvider',
           groupIdentifier: 'group.com.voyfy.vpn',
         );
+        
+        // Setup Android data usage channel
+        if (_isAndroid) {
+          _androidDataChannel.setMethodCallHandler((call) async {
+            if (call.method == 'onDataUsageUpdated') {
+              final args = call.arguments as Map<dynamic, dynamic>;
+              _updateDataUsage(DataUsage(
+                bytesReceived: args['bytesReceived'] as int? ?? 0,
+                bytesSent: args['bytesSent'] as int? ?? 0,
+              ));
+            }
+            return null;
+          });
+        }
       }
       print('VPN SERVICE: Initialized');
       return true;
@@ -308,15 +333,22 @@ class VpnService {
           return false;
         }
         
-        // Platform-specific connect
+        // Platform-specific connect using native MethodChannels
         if (_isWindows) {
           print('VPN SERVICE: Calling Windows connect...');
           final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
           print('VPN SERVICE: Windows connect returned: $result');
           return result ?? false;
-        } else if (_isLinux || _isMacOS) {
-          print('VPN SERVICE: Starting xray on Linux/macOS...');
-          return await _connectDesktopLinuxMacOS(config);
+        } else if (_isLinux) {
+          print('VPN SERVICE: Calling Linux connect...');
+          final result = await _linuxChannel.invokeMethod<bool>('connect', {'config': config});
+          print('VPN SERVICE: Linux connect returned: $result');
+          return result ?? false;
+        } else if (_isMacOS) {
+          print('VPN SERVICE: Calling macOS connect...');
+          final result = await _macosChannel.invokeMethod<bool>('connect', {'config': config});
+          print('VPN SERVICE: macOS connect returned: $result');
+          return result ?? false;
         }
         return false;
       }
@@ -350,6 +382,17 @@ class VpnService {
         
         if (hasPermission) {
           print('VPN SERVICE: Calling startVless...');
+          
+          // Reset data usage baseline on Android
+          if (_isAndroid) {
+            try {
+              await _androidChannel.invokeMethod('resetBaseline');
+              print('VPN SERVICE: Android data baseline reset');
+            } catch (e) {
+              print('VPN SERVICE: Failed to reset baseline: $e');
+            }
+          }
+          
           await _flutterVless!.startVless(
             remark: serverName ?? 'Voyfy Server',
             config: newConfig,
@@ -391,8 +434,12 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<bool>('disconnect');
         return result ?? false;
-      } else if (_isLinux || _isMacOS) {
-        return await _disconnectDesktopLinuxMacOS();
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
       }
       
       try {
@@ -447,7 +494,7 @@ class VpnService {
   Future<bool> _ensureXrayExists() async {
     print('VPN SERVICE: _ensureXrayExists() started');
     try {
-      // For Windows, use native channel
+      // Use native channel for all desktop platforms
       if (_isWindows) {
         print('VPN SERVICE: Checking xray via Windows native channel...');
         final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
@@ -458,23 +505,26 @@ class VpnService {
         }
         // Fallback to XrayDownloader
         return await _copyXrayFromAssets();
-      }
-      
-      // For Linux/macOS, use XrayDownloader directly
-      if (_isLinux || _isMacOS) {
-        print('VPN SERVICE: Checking xray for Linux/macOS...');
-        final downloader = XrayDownloader();
-        
-        // Check if exists
-        if (await downloader.isBinaryExists()) {
-          print('VPN SERVICE: Xray already exists');
+      } else if (_isLinux) {
+        print('VPN SERVICE: Checking xray via Linux native channel...');
+        final result = await _linuxChannel.invokeMethod<bool>('checkAndDownloadXray');
+        print('VPN SERVICE: Linux checkAndDownloadXray returned: $result');
+        if (result == true) {
+          print('VPN SERVICE: Xray already exists on Linux');
           return true;
         }
-        
-        // Download
-        print('VPN SERVICE: Xray not found, downloading...');
-        final path = await downloader.downloadAndVerify();
-        return path != null;
+        // Download via Dart downloader
+        return await _copyXrayFromAssets();
+      } else if (_isMacOS) {
+        print('VPN SERVICE: Checking xray via macOS native channel...');
+        final result = await _macosChannel.invokeMethod<bool>('checkAndDownloadXray');
+        print('VPN SERVICE: macOS checkAndDownloadXray returned: $result');
+        if (result == true) {
+          print('VPN SERVICE: Xray already exists on macOS');
+          return true;
+        }
+        // Download via Dart downloader
+        return await _copyXrayFromAssets();
       }
       
       return false;
@@ -497,8 +547,21 @@ class VpnService {
           'timeout': timeout,
         });
         return result ?? -1;
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<int>('ping', {
+          'host': host,
+          'timeout': timeout,
+        });
+        return result ?? -1;
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<int>('ping', {
+          'host': host,
+          'timeout': timeout,
+        });
+        return result ?? -1;
       }
-      // flutter_v2ray doesn't have direct ping, use HTTP fallback
+      
+      // For other platforms, use HTTP fallback
       return await _pingHttpFallback(config);
     } catch (e) {
       print('VPN SERVICE: Ping error: $e');
@@ -558,6 +621,12 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<bool>('testConfig', {'config': config});
         return result ?? false;
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<bool>('testConfig', {'config': config});
+        return result ?? false;
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<bool>('testConfig', {'config': config});
+        return result ?? false;
       }
       // flutter_vless test via parsing
       try {
@@ -578,11 +647,18 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<String>('getStatus');
         return _parseWindowsStatus(result ?? 'disconnected');
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
       }
       // Check status via current status variable since flutter_vless doesn't expose isConnected
       return _currentStatus;
     } catch (e) {
-      return VpnStatus.disconnected;
+      print('VPN SERVICE: Get status error: $e');
+      return _currentStatus;
     }
   }
 
@@ -651,17 +727,32 @@ class VpnService {
         return -1;
       }
     } else {
-      // Android/iOS: Use HTTP ping through VPN tunnel
-      // If VPN is connected, HTTP request will go through the tunnel
+      // Android/iOS: Try multiple ping methods
+      // Method 1: HTTP ping to VPN server host (most accurate for server latency)
       try {
         final stopwatch = Stopwatch()..start();
         
-        // Use HTTP HEAD request to Cloudflare - lightweight and reliable
-        // If VPN works, this will succeed; if not, it will fail
+        // Try to connect to VPN server port - this measures actual latency to server
+        // Most VPN servers accept connections on their configured port
+        final socket = await Socket.connect(host, 443, timeout: const Duration(seconds: 3));
+        await socket.close();
+        stopwatch.stop();
+        
+        print('VPN SERVICE: TCP ping to $host:443 = ${stopwatch.elapsedMilliseconds}ms');
+        return stopwatch.elapsedMilliseconds;
+      } catch (e) {
+        print('VPN SERVICE: TCP ping to $host:443 failed: $e');
+      }
+      
+      // Method 2: HTTP ping through VPN tunnel (tests if VPN routing works)
+      try {
+        final stopwatch = Stopwatch()..start();
+        
         final client = HttpClient()
           ..connectionTimeout = const Duration(seconds: 3)
           ..badCertificateCallback = (cert, host, port) => true;
         
+        // Try to reach a reliable endpoint through VPN
         final request = await client.headUrl(Uri.parse('http://1.1.1.1/'))
           .timeout(const Duration(seconds: 3));
         request.followRedirects = false;
@@ -670,10 +761,10 @@ class VpnService {
         stopwatch.stop();
         client.close();
         
-        print('VPN SERVICE: HTTP ping through VPN: ${stopwatch.elapsedMilliseconds}ms (status: ${response.statusCode})');
+        print('VPN SERVICE: HTTP ping through VPN: ${stopwatch.elapsedMilliseconds}ms');
         return stopwatch.elapsedMilliseconds;
       } catch (e) {
-        print('VPN SERVICE: HTTP ping error (VPN may not be routing): $e');
+        print('VPN SERVICE: HTTP ping error: $e');
         return -1;
       }
     }
@@ -695,10 +786,18 @@ class VpnService {
   Future<Map<String, int>> getNetworkStats() async {
     if (_isWindows) {
       return _getWindowsNetworkStats();
+    } else if (_isAndroid) {
+      // Try to get stats from Android native side
+      final stats = await _getAndroidDataUsage();
+      if (stats != null) {
+        return {
+          'recv': stats['bytesReceived'] ?? 0,
+          'sent': stats['bytesSent'] ?? 0,
+        };
+      }
     }
     
-    // Android/iOS: Stats not available without native plugin support
-    // Return 0,0 - speed will be measured via HTTP test instead
+    // Fallback: Return 0,0 - speed will be measured via HTTP test instead
     return {'recv': 0, 'sent': 0};
   }
 
@@ -796,21 +895,12 @@ class VpnService {
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<String>('getStatus');
         return _parseWindowsStatus(result ?? 'disconnected');
-      } else if (_isLinux || _isMacOS) {
-        // Check if xray process is still running
-        if (_xrayProcess != null) {
-          try {
-            // Try to get exit code - if not null, process has exited
-            // For detached process, we need to check differently
-            final result = await Process.run('pgrep', ['-f', 'xray.*voyfy']);
-            if (result.exitCode == 0) {
-              return VpnStatus.connected;
-            }
-          } catch (e) {
-            print('VPN SERVICE: Error checking xray process: $e');
-          }
-        }
-        return _currentStatus;
+      } else if (_isLinux) {
+        final result = await _linuxChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
+      } else if (_isMacOS) {
+        final result = await _macosChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
       } else {
         // Check status via _currentStatus for flutter_vless
         return _currentStatus;
@@ -835,6 +925,10 @@ class VpnService {
       disconnect();
     }
     
+    // Stop data usage timer
+    _dataUsageTimer?.cancel();
+    _dataUsageTimer = null;
+    
     // Don't close controllers here - let them stay open for the app lifetime
     // Just cancel any active connection
     print('VPN SERVICE: dispose() called but keeping controllers open');
@@ -850,6 +944,63 @@ class VpnService {
     } else {
       print('VPN SERVICE: Status controller is closed!');
     }
+    
+    // Start/stop data usage timer for Android
+    if (_isAndroid) {
+      if (status == VpnStatus.connected) {
+        _startAndroidDataUsageTimer();
+      } else if (status == VpnStatus.disconnected || status == VpnStatus.error) {
+        _stopAndroidDataUsageTimer();
+      }
+    }
+  }
+  
+  /// Start timer to simulate/track data usage on Android
+  void _startAndroidDataUsageTimer() {
+    _dataUsageTimer?.cancel();
+    _lastBytesReceived = 0;
+    _lastBytesSent = 0;
+    
+    // Update every second
+    _dataUsageTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_currentStatus != VpnStatus.connected) {
+        timer.cancel();
+        return;
+      }
+      
+      // Try to get stats from Android native side
+      _getAndroidDataUsage().then((stats) {
+        if (stats != null) {
+          _updateDataUsage(DataUsage(
+            bytesReceived: stats['bytesReceived'] ?? 0,
+            bytesSent: stats['bytesSent'] ?? 0,
+          ));
+        }
+      }).catchError((e) {
+        // Silent fail - stats not available
+      });
+    });
+  }
+  
+  void _stopAndroidDataUsageTimer() {
+    _dataUsageTimer?.cancel();
+    _dataUsageTimer = null;
+  }
+  
+  /// Get data usage from Android native side
+  Future<Map<String, int>?> _getAndroidDataUsage() async {
+    try {
+      final result = await _androidChannel.invokeMethod<Map<dynamic, dynamic>>('getDataUsage');
+      if (result != null) {
+        return {
+          'bytesReceived': result['bytesReceived'] as int? ?? 0,
+          'bytesSent': result['bytesSent'] as int? ?? 0,
+        };
+      }
+    } catch (e) {
+      // Method not implemented or error
+    }
+    return null;
   }
   
   void _updateDataUsage(DataUsage usage) {

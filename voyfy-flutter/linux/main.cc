@@ -25,6 +25,31 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
   } else if (strcmp(method, "disconnect") == 0) {
     bool result = voyfy::VpnService::GetInstance().Disconnect();
     fl_method_call_respond_success(method_call, fl_value_new_bool(result), nullptr);
+  } else if (strcmp(method, "getStatus") == 0) {
+    // Return current VPN status
+    bool is_connected = voyfy::VpnService::GetInstance().IsConnected();
+    const char* status = is_connected ? "connected" : "disconnected";
+    fl_method_call_respond_success(method_call, fl_value_new_string(status), nullptr);
+  } else if (strcmp(method, "ping") == 0) {
+    // Simple ping implementation - just return -1 for now (not implemented)
+    // In production, you could use system ping command
+    fl_method_call_respond_success(method_call, fl_value_new_int(-1), nullptr);
+  } else if (strcmp(method, "checkAndDownloadXray") == 0) {
+    // Check if xray exists at expected paths
+    std::string xray_path = voyfy::VpnService::GetInstance().GetXrayPath();
+    bool exists = !xray_path.empty() && access(xray_path.c_str(), X_OK) == 0;
+    fl_method_call_respond_success(method_call, fl_value_new_bool(exists), nullptr);
+  } else if (strcmp(method, "testConfig") == 0) {
+    // Test config by parsing it
+    FlValue* config_value = fl_value_lookup_string(args, "config");
+    if (config_value) {
+      const char* config = fl_value_get_string(config_value);
+      // Basic validation - check if it starts with vless://
+      bool is_valid = config && strncmp(config, "vless://", 8) == 0;
+      fl_method_call_respond_success(method_call, fl_value_new_bool(is_valid), nullptr);
+    } else {
+      fl_method_call_respond_success(method_call, fl_value_new_bool(false), nullptr);
+    }
   } else {
     fl_method_call_respond_not_implemented(method_call, nullptr);
   }

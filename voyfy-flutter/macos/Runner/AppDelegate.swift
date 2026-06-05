@@ -43,6 +43,49 @@ class AppDelegate: FlutterAppDelegate {
       let success = VpnService.shared.disconnect()
       result(success)
       
+    case "getStatus":
+      // Return current VPN status
+      let status = VpnService.shared.isConnected ? "connected" : "disconnected"
+      result(status)
+      
+    case "ping":
+      // Simple ping - return -1 for not implemented
+      // In production, could use simple ping to server
+      result(-1)
+      
+    case "checkAndDownloadXray":
+      // Check if xray binary exists
+      let fileManager = FileManager.default
+      let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      let dartPath = appSupportURL?.appendingPathComponent("bin/xray").path
+      
+      let possiblePaths = [
+        dartPath,
+        Bundle.main.bundlePath + "/xray",
+        Bundle.main.bundlePath + "/../xray",
+        "/usr/local/bin/xray",
+        "/opt/voyfy/xray"
+      ]
+      
+      var exists = false
+      for path in possiblePaths {
+        if let path = path, fileManager.fileExists(atPath: path) {
+          exists = true
+          break
+        }
+      }
+      result(exists)
+      
+    case "testConfig":
+      // Test if config is valid VLESS URL
+      guard let args = call.arguments as? [String: Any],
+            let config = args["config"] as? String else {
+        result(false)
+        return
+      }
+      let isValid = config.hasPrefix("vless://")
+      result(isValid)
+      
     default:
       result(FlutterMethodNotImplemented)
     }
