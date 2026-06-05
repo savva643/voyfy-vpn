@@ -7,13 +7,25 @@ const logger = require('../utils/logger');
  * Format: hysteria2://password@host:port?params#name
  */
 const buildHysteria2Url = (password, server, name) => {
+  // Extract SNI safely
+  let sni = 'www.gosuslugi.ru';
+  if (server.masquerade_url) {
+    try {
+      sni = new URL(server.masquerade_url).hostname;
+    } catch (e) {
+      sni = server.masquerade_url; // Use as-is if not valid URL
+    }
+  }
+
   const params = new URLSearchParams({
     obfs: 'salamander',
-    'obfs-password': server.obfs_password || config.server.obfsPassword,
-    sni: server.masquerade_url ? new URL(server.masquerade_url).hostname : 'www.gosuslugi.ru',
+    'obfs-password': server.obfs_password || config.server?.obfsPassword || 'voyfy_obfs_secret',
+    sni: sni,
   });
 
-  return `hysteria2://${password}@${server.host}:${server.port || config.server.port}?${params.toString()}#${encodeURIComponent(name)}`;
+  const port = server.port || config.server?.port || 8444;
+
+  return `hysteria2://${password}@${server.host}:${port}?${params.toString()}#${encodeURIComponent(name)}`;
 };
 
 /**

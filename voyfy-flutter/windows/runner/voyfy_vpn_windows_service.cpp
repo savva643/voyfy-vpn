@@ -99,51 +99,20 @@ static void AppendServiceLog(const std::string& line) {
     }
 }
 
-static bool WriteConfigFile(const std::string& configJson) {
+static bool WriteHysteria2Config(const std::string& configYaml) {
     std::wstring dir = GetDataDir();
     if (dir.empty()) return false;
     
-    // Replace user paths with SYSTEM paths in the config
-    std::string modifiedConfig = configJson;
-    
-    // Convert wstring dir to string using WideCharToMultiByte
-    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, dir.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string systemDirStr(sizeNeeded - 1, 0);
-    WideCharToMultiByte(CP_UTF8, 0, dir.c_str(), -1, &systemDirStr[0], sizeNeeded, nullptr, nullptr);
-    
-    // Replace backslashes with forward slashes for JSON
-    std::replace(systemDirStr.begin(), systemDirStr.end(), '\\', '/');
-    
-    // Find and replace user-specific paths (e.g., C:/Users/Timur/AppData/Local/VoyfyVPN/access.log)
-    size_t pos = 0;
-    while ((pos = modifiedConfig.find("C:/Users/", pos)) != std::string::npos) {
-        size_t voyfyPos = modifiedConfig.find("/VoyfyVPN/", pos);
-        if (voyfyPos != std::string::npos) {
-            // Find the end of the path (look for file suffix like /access.log or /error.log)
-            size_t pathEnd = modifiedConfig.find("\"", voyfyPos);
-            if (pathEnd != std::string::npos) {
-                // Extract suffix after /VoyfyVPN/ (e.g., access.log or error.log)
-                size_t suffixStart = voyfyPos + 10; // Length of "/VoyfyVPN/"
-                std::string suffix = modifiedConfig.substr(suffixStart, pathEnd - suffixStart);
-                std::string newPath = systemDirStr + "/" + suffix;
-                modifiedConfig.replace(pos, pathEnd - pos, newPath);
-            }
-        }
-        pos++;
-    }
-    
-    std::wstring configPath = dir + L"\\config.json";
+    std::wstring configPath = dir + L"\\config.yaml";
     std::ofstream file(configPath, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
-        AppendServiceLog("[service] ERROR: Cannot open config.json for writing");
+        AppendServiceLog("[service] ERROR: Cannot open config.yaml for writing");
         return false;
     }
-    file << modifiedConfig;
+    file << configYaml;
     file.close();
     
-    // Log the config content (first 500 chars) for debugging
-    AppendServiceLog("[service] Config content: " + modifiedConfig.substr(0, 500));
-    AppendServiceLog("[service] Config path: " + WStringToString(configPath));
+    AppendServiceLog("[service] Hysteria2 config written: " + WStringToString(configPath));
     
     return true;
 }
@@ -572,7 +541,7 @@ static void WINAPI ServiceMain(DWORD /*argc*/, LPWSTR* /*argv*/) {
 
     WaitForSingleObject(g_stopEvent, INFINITE);
 
-    StopXray();
+    StopHysteria2();
 
     if (server.joinable()) server.join();
 
