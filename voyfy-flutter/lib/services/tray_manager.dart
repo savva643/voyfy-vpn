@@ -170,11 +170,9 @@ class TrayManager {
   /// Update tray menu when state changes
   Future<void> updateMenu() async {
     if (!_isInitialized || _context == null || _systemTray == null) return;
-    
-    // Use Builder to get fresh context with current providers
-    final element = _context!.findAncestorStateOfType<NavigatorState>()?.context;
-    if (element != null) {
-      await _buildMenu(element);
+    final navigatorContext = _context!.findAncestorStateOfType<NavigatorState>()?.context;
+    if (navigatorContext != null) {
+      await _buildMenu(navigatorContext);
     } else {
       await _buildMenu(_context!);
     }

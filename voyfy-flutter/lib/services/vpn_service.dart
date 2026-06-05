@@ -340,10 +340,8 @@ class VpnService {
           print('VPN SERVICE: Windows connect returned: $result');
           return result ?? false;
         } else if (_isLinux) {
-          print('VPN SERVICE: Calling Linux connect...');
-          final result = await _linuxChannel.invokeMethod<bool>('connect', {'config': config});
-          print('VPN SERVICE: Linux connect returned: $result');
-          return result ?? false;
+          print('VPN SERVICE: Starting xray directly on Linux...');
+          return await _connectDesktopLinuxMacOS(config);
         } else if (_isMacOS) {
           print('VPN SERVICE: Calling macOS connect...');
           final result = await _macosChannel.invokeMethod<bool>('connect', {'config': config});
@@ -494,39 +492,37 @@ class VpnService {
   Future<bool> _ensureXrayExists() async {
     print('VPN SERVICE: _ensureXrayExists() started');
     try {
-      // Use native channel for all desktop platforms
       if (_isWindows) {
-        print('VPN SERVICE: Checking xray via Windows native channel...');
+        // Windows: используем native channel
         final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
         print('VPN SERVICE: checkAndDownloadXray returned: $result');
-        if (result == true) {
-          print('VPN SERVICE: Xray already exists');
-          return true;
-        }
-        // Fallback to XrayDownloader
-        return await _copyXrayFromAssets();
-      } else if (_isLinux) {
-        print('VPN SERVICE: Checking xray via Linux native channel...');
-        final result = await _linuxChannel.invokeMethod<bool>('checkAndDownloadXray');
-        print('VPN SERVICE: Linux checkAndDownloadXray returned: $result');
-        if (result == true) {
-          print('VPN SERVICE: Xray already exists on Linux');
-          return true;
-        }
-        // Download via Dart downloader
-        return await _copyXrayFromAssets();
-      } else if (_isMacOS) {
-        print('VPN SERVICE: Checking xray via macOS native channel...');
-        final result = await _macosChannel.invokeMethod<bool>('checkAndDownloadXray');
-        print('VPN SERVICE: macOS checkAndDownloadXray returned: $result');
-        if (result == true) {
-          print('VPN SERVICE: Xray already exists on macOS');
-          return true;
-        }
-        // Download via Dart downloader
+        if (result == true) return true;
         return await _copyXrayFromAssets();
       }
-      
+      else if (_isLinux) {
+        // Linux: проверяем напрямую наличие xray в ~/bin/xray
+        final home = Platform.environment['HOME'];
+        final xrayPath = home != null ? '$home/bin/xray' : '/usr/local/bin/xray';
+        final xrayFile = File(xrayPath);
+        final exists = await xrayFile.exists();
+        if (exists) {
+          print('VPN SERVICE: Xray found at $xrayPath');
+          return true;
+        } else {
+          print('VPN SERVICE: Xray not found at $xrayPath, trying fallback...');
+          return await _copyXrayFromAssets();
+        }
+      }
+      else if (_isMacOS) {
+        // macOS аналогично
+        final home = Platform.environment['HOME'];
+        final xrayPath = home != null ? '$home/bin/xray' : '/usr/local/bin/xray';
+        final xrayFile = File(xrayPath);
+        final exists = await xrayFile.exists();
+        if (exists) return true;
+        return await _copyXrayFromAssets();
+      }
+
       return false;
     } catch (e, stackTrace) {
       print('VPN SERVICE: Xray check error: $e');
@@ -1012,75 +1008,54 @@ class VpnService {
   /// Connect on Linux/macOS desktop using xray directly
   Future<bool> _connectDesktopLinuxMacOS(String vlessUrl) async {
     try {
-      // Kill any existing xray process
       await _disconnectDesktopLinuxMacOS();
-      
-      // Get xray binary path from XrayDownloader
-      final downloader = XrayDownloader();
-      final xrayPath = await downloader.binaryPath;
-      
-      print('VPN SERVICE: Expected xray path: $xrayPath');
-      
-      // Ensure xray exists - download if needed
+
+      // Определяем путь к xray
+      final home = Platform.environment['HOME'];
+      String xrayPath = home != null ? '$home/bin/xray' : '/usr/local/bin/xray';
       final xrayFile = File(xrayPath);
       if (!await xrayFile.exists()) {
-        print('VPN SERVICE: xray not found at $xrayPath, downloading...');
-        
-        // Download xray using XrayDownloader
-        final downloadedPath = await downloader.downloadAndVerify();
-        
-        if (downloadedPath == null) {
-          print('VPN SERVICE: Failed to download xray');
-          _errorController.add(VpnError(
-            type: 'xray_not_found',
-            message: 'Failed to download Xray binary for ${_isMacOS ? "macOS" : "Linux"}',
-          ));
-          _updateStatus(VpnStatus.error);
-          return false;
-        }
-        
-        print('VPN SERVICE: xray downloaded to: $downloadedPath');
+        print('VPN SERVICE: xray not found at $xrayPath');
+        _errorController.add(VpnError(
+          type: 'xray_not_found',
+          message: 'Xray binary not found. Please install it to ~/bin/xray',
+        ));
+        _updateStatus(VpnStatus.error);
+        return false;
       }
-      
-      // Make executable (just in case)
+
+      // Сделать исполняемым на всякий случай
       await Process.run('chmod', ['+x', xrayPath]);
-      
-      // Parse VLESS URL and create config
+
+      // Парсим VLESS URL и создаём JSON-конфиг
       final parsed = FlutterVless.parseFromURL(vlessUrl);
       final configJson = parsed.getFullConfiguration();
-      
-      // Write config to temp file
+
+      // Временный файл конфига
       final tempDir = Directory.systemTemp;
       final configFile = File('${tempDir.path}/voyfy_vpn_config.json');
       await configFile.writeAsString(configJson);
       _xrayConfigPath = configFile.path;
-      
-      print('VPN SERVICE: Starting xray with config: ${_xrayConfigPath}');
-      
-      // Start xray process
+
+      print('VPN SERVICE: Starting xray with config: $_xrayConfigPath');
+
+      // Запускаем xray процесс
       _xrayProcess = await Process.start(
         xrayPath,
         ['-c', _xrayConfigPath!],
         mode: ProcessStartMode.detached,
       );
-      
+
       print('VPN SERVICE: xray started with PID: ${_xrayProcess?.pid}');
-      
-      // Wait a moment for xray to initialize
+
       await Future.delayed(const Duration(seconds: 2));
-      
-      // Check if process is still running
-      // Note: detached process doesn't allow easy exitCode check
-      // We'll assume it's running and let ping test verify
-      
       _updateStatus(VpnStatus.connected);
       return true;
-      
     } catch (e) {
-      print('VPN SERVICE: Linux/macOS connect error: $e');
+      print('VPN SERVICE: Linux connect error: $e');
       _errorController.add(VpnError(
         type: 'connection_error',
-        message: 'Failed to start xray on Linux/macOS',
+        message: 'Failed to start xray',
         details: e.toString(),
       ));
       _updateStatus(VpnStatus.error);
