@@ -4,7 +4,7 @@ const { query } = require('../db');
 const logger = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
 const config = require('../config');
-const { buildVlessUrl } = require('../controllers/subscriptionController');
+const { buildHysteria2Url } = require('../controllers/subscriptionController');
 
 // Get all locations
 router.get('/locations', async (req, res) => {
@@ -154,17 +154,21 @@ router.get('/config/:serverId', authenticate, async (req, res) => {
 
     const server = serverResult.rows[0];
 
-    // Build VLESS URL using buildVlessUrl function (removes Hash32 prefix)
-    const vlessUrl = buildVlessUrl(userUuid, server, server.name);
+    // Build Hysteria2 URL using buildHysteria2Url function
+    const hysteria2Url = buildHysteria2Url(server.password, server, server.name);
 
     res.json({
       success: true,
       config: {
-        vlessUrl,
+        hysteria2Url,
         serverId: server.id,
         serverName: server.name,
         host: server.host,
-        port: server.port || config.server.port
+        port: server.port || config.server.port,
+        protocol: 'hysteria2',
+        password: server.password,
+        obfsPassword: server.obfs_password,
+        masqueradeUrl: server.masquerade_url,
       }
     });
   } catch (err) {
