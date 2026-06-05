@@ -135,98 +135,13 @@ JWT_SECRET=$(openssl rand -hex 32)
 JWT_REFRESH_SECRET=$(openssl rand -hex 32)
 ADMIN_API_KEY=$(openssl rand -hex 32)
 
-# Generate Xray keys
-echo "Generating Xray keys..."
-XRAY_KEYS=$(docker run --rm teddysun/xray xray x25519)
-XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | grep "Private key:" | awk '{print $3}')
-XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS" | grep "Public key:" | awk '{print $3}')
-XRAY_SHORT_ID=$(openssl rand -hex 8)
+# Hysteria2 doesn't need key generation - uses password-based auth
+echo "Hysteria2 uses password-based authentication (configured per-server)"
 
-# Fallback if keys are empty
-if [ -z "$XRAY_PRIVATE_KEY" ] || [ -z "$XRAY_PUBLIC_KEY" ]; then
-    echo "WARNING: Xray key generation failed, using fallback method"
-    XRAY_PRIVATE_KEY=$(docker run --rm teddysun/xray xray x25519 | tail -1)
-    XRAY_PUBLIC_KEY=$(docker run --rm teddysun/xray xray x25519 | tail -1)
-fi
+# Step 4.5: Hysteria2 binaries are downloaded by clients directly from GitHub
+# No need to host them on the server
 
-echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
-echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
-echo "XRAY Short ID: $XRAY_SHORT_ID"
-
-# Step 4.5: Download Xray binaries for client distribution
-if [ "$SKIP_XRAY_DOWNLOAD" != true ]; then
-    echo "Step 4.5: Downloading Xray binaries for clients..."
-
-    XRAY_BINARIES_DIR="$PROJECT_DIR/backend/src/xray-binaries"
-    mkdir -p "$XRAY_BINARIES_DIR"
-    cd "$XRAY_BINARIES_DIR"
-
-    # Function to download and extract Xray
-    download_xray() {
-        local platform=$1
-        local arch=$2
-        local filename=$3
-        local asset_name=$4
-        local url="https://github.com/XTLS/Xray-core/releases/latest/download/${asset_name}"
-
-        echo "Downloading Xray ZIP for ${platform}-${arch}..."
-
-        if [ -f "$filename" ]; then
-            echo "  ${filename} already exists, skipping..."
-            return 0
-        fi
-
-        echo "  URL: $url"
-
-        # Download directly as ZIP
-        if ! wget --show-progress "$url" -O "$filename" 2>&1; then
-            echo "  wget failed, trying curl..."
-            if ! curl -L --progress-bar -o "$filename" "$url" 2>&1; then
-                echo "  ERROR: Could not download ${platform}-${arch}"
-                return 1
-            fi
-        fi
-
-        # Check if file was downloaded and has content
-        if [ ! -s "$filename" ]; then
-            echo "  ERROR: Downloaded file is empty"
-            rm -f "$filename"
-            return 1
-        fi
-
-        echo "  ${filename} downloaded successfully ($(ls -lh "$filename" | awk '{print $5}'))"
-    }
-
-    # Download all platforms as ZIP archives
-    download_xray "windows" "amd64" "xray-windows-amd64.zip" "Xray-windows-64.zip" || \
-        download_xray "windows" "amd64" "xray-windows-amd64.zip" "Xray-windows-amd64.zip" || \
-        echo "  Windows 64-bit download failed, will skip..."
-
-    download_xray "windows" "arm64" "xray-windows-arm64.zip" "Xray-windows-arm64.zip" || \
-        echo "  Windows ARM64 not available, skipping..."
-
-    download_xray "linux" "amd64" "xray-linux-amd64.zip" "Xray-linux-64.zip" || \
-        download_xray "linux" "amd64" "xray-linux-amd64.zip" "Xray-linux-amd64.zip" || \
-        echo "  Linux 64-bit download failed..."
-
-    download_xray "linux" "arm64" "xray-linux-arm64.zip" "Xray-linux-arm64.zip" || \
-        download_xray "linux" "arm64-v8a" "xray-linux-arm64-v8a.zip" "Xray-linux-arm64-v8a.zip" || \
-        echo "  Linux ARM64 not available, skipping..."
-    download_xray "darwin" "amd64" "xray-darwin-amd64.zip" "Xray-macos-64.zip" || \
-        download_xray "darwin" "amd64" "xray-darwin-amd64.zip" "Xray-darwin-amd64.zip" || \
-        echo "  macOS Intel download failed, skipping..."
-    download_xray "darwin" "arm64" "xray-darwin-arm64.zip" "Xray-macos-arm64.zip" || \
-        download_xray "darwin" "arm64" "xray-darwin-arm64.zip" "Xray-darwin-arm64.zip" || \
-        echo "  macOS ARM64 download failed, skipping..."
-
-    echo "Xray binaries download complete!"
-    echo "Available binaries:"
-    ls -lh "$XRAY_BINARIES_DIR/"
-
-    cd "$PROJECT_DIR"
-else
-    echo "Step 4.5: Skipping Xray download (SKIP_XRAY_DOWNLOAD=true)"
-fi
+echo "Step 4.5: Skipping binary download - Hysteria2 clients download directly from GitHub"
 
 # Step 4.6: Remove old Docker containers and volumes (to avoid password conflicts)
 echo "Step 4.6: Cleaning up old Docker containers and volumes..."
@@ -253,13 +168,8 @@ POSTGRES_DB=voyfy_vpn
 JWT_SECRET=$JWT_SECRET
 JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 
-# Xray Configuration
-XRAY_PUBLIC_KEY=$XRAY_PUBLIC_KEY
-XRAY_PRIVATE_KEY=$XRAY_PRIVATE_KEY
-XRAY_SERVER_NAME=www.yandex.ru
-XRAY_SHORT_ID=$XRAY_SHORT_ID
-XRAY_PORT=8443
-XRAY_API_PORT=10085
+# Hysteria2 Configuration (configured per-server via install.sh)
+HYSTERIA2_PORT=8444
 
 # Admin API Key
 ADMIN_API_KEY=$ADMIN_API_KEY
@@ -404,19 +314,6 @@ http {
             access_log off;
         }
 
-        # Xray binary downloads
-        location /xray/ {
-            proxy_pass http://api_backend;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_connect_timeout 60s;
-            proxy_send_timeout 60s;
-            proxy_read_timeout 60s;
-        }
-
         # VPN server installation scripts
         location /vpn-server/ {
             alias /usr/share/nginx/vpn-server/;
@@ -492,9 +389,8 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 443/udp
 
-# Allow VPN port
-ufw allow 8443/tcp
-ufw allow 8443/udp
+# Allow VPN port (Hysteria2 uses UDP 8444)
+ufw allow 8444/udp
 
 # Show rules before enabling
 echo "Firewall rules:"
@@ -541,9 +437,6 @@ echo "Database Password: $DB_PASSWORD"
 echo "JWT Secret: $JWT_SECRET"
 echo "JWT Refresh Secret: $JWT_REFRESH_SECRET"
 echo "Admin API Key: $ADMIN_API_KEY"
-echo "XRAY Private Key: $XRAY_PRIVATE_KEY"
-echo "XRAY Public Key: $XRAY_PUBLIC_KEY"
-echo "XRAY Short ID: $XRAY_SHORT_ID"
 echo "======================================"
 echo "Next steps:"
 echo "1. Open https://$DOMAIN/admin"

@@ -349,35 +349,30 @@ found:
     return true;
 }
 
-static bool StartXray() {
-    // xray.exe and wintun.dll are downloaded to data dir by XrayDownloader
+static bool StartHysteria2() {
+    // hysteria2.exe is downloaded to data dir by Hysteria2Downloader
     std::wstring moduleDir = GetModuleDir();
     std::wstring dataDir = GetDataDir();
     
-    // Look for xray.exe and wintun.dll in dataDir (where XrayDownloader puts them)
-    std::wstring xrayPath = dataDir + L"\\xray.exe";
-    std::wstring wintunPath = dataDir + L"\\wintun.dll";
-    std::wstring configPath = dataDir + L"\\config.json";
+    // Look for hysteria2.exe in dataDir
+    std::wstring hysteria2Path = dataDir + L"\\hysteria2.exe";
+    std::wstring configPath = dataDir + L"\\config.yaml";
 
     AppendServiceLog("[service] Module dir: " + WStringToString(moduleDir));
     AppendServiceLog("[service] Data dir: " + WStringToString(dataDir));
-    AppendServiceLog("[service] Looking for xray.exe at: " + WStringToString(xrayPath));
+    AppendServiceLog("[service] Looking for hysteria2.exe at: " + WStringToString(hysteria2Path));
 
-    if (!FileExists(xrayPath)) {
-        AppendServiceLog("[service] xray.exe not found in data directory");
-        return false;
-    }
-    if (!FileExists(wintunPath)) {
-        AppendServiceLog("[service] wintun.dll not found in data directory");
+    if (!FileExists(hysteria2Path)) {
+        AppendServiceLog("[service] hysteria2.exe not found in data directory");
         return false;
     }
     if (!FileExists(configPath)) {
-        AppendServiceLog("[service] config.json missing in data directory");
+        AppendServiceLog("[service] config.yaml missing in data directory");
         return false;
     }
     AppendServiceLog("[service] All files found");
 
-    // Add bypass route for VPN server before starting Xray
+    // Add bypass route for VPN server before starting Hysteria2
     std::string serverIP = ParseServerIPFromFile();
     if (!serverIP.empty()) {
         AppendServiceLog("[service] Server IP: " + serverIP);
@@ -386,8 +381,8 @@ static bool StartXray() {
         AppendServiceLog("[service] Failed to parse server IP from config");
     }
 
-    // Set working directory to module dir so xray can find wintun.dll
-    std::wstring cmdLine = L"\"" + xrayPath + L"\" -config=\"" + configPath + L"\"";
+    // Hysteria2 command line - client mode with config
+    std::wstring cmdLine = L"\"" + hysteria2Path + L"\" client -c \"" + configPath + L"\"";
     AppendServiceLog("[service] Command line: " + WStringToString(cmdLine));
     
     STARTUPINFOW si = { sizeof(si) };
@@ -401,7 +396,7 @@ static bool StartXray() {
         FALSE,
         CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
         nullptr, 
-        moduleDir.c_str(),  // Working directory = module dir (for wintun.dll)
+        dataDir.c_str(),  // Working directory = data dir
         &si, 
         &pi);
         
@@ -412,35 +407,23 @@ static bool StartXray() {
     }
 
     CloseHandle(pi.hThread);
-    g_xrayProcess = pi.hProcess;
-    AppendServiceLog("[service] Xray started successfully with PID: " + std::to_string(pi.dwProcessId));
+    g_hysteria2Process = pi.hProcess;
+    AppendServiceLog("[service] Hysteria2 started successfully with PID: " + std::to_string(pi.dwProcessId));
     
-    // Wait a bit and check if Xray is still running
+    // Wait a bit and check if Hysteria2 is still running
     Sleep(2000);
     DWORD exitCode;
-    if (GetExitCodeProcess(g_xrayProcess, &exitCode)) {
+    if (GetExitCodeProcess(g_hysteria2Process, &exitCode)) {
         if (exitCode != STILL_ACTIVE) {
-            AppendServiceLog("[service] Xray exited immediately with code: " + std::to_string(exitCode));
-            // Log xray error log if exists
-            std::wstring errLogPath = dataDir + L"\\error.log";
-            if (FileExists(errLogPath)) {
-                std::ifstream errFile(errLogPath);
-                if (errFile.is_open()) {
-                    std::string line;
-                    while (std::getline(errFile, line)) {
-                        AppendServiceLog("[xray] " + line);
-                    }
-                }
-            }
+            AppendServiceLog("[service] Hysteria2 exited immediately with code: " + std::to_string(exitCode));
             return false;
         }
-        AppendServiceLog("[service] Xray is running");
+        AppendServiceLog("[service] Hysteria2 is running");
     }
     
-    // Manually configure TUN interface (IP address and routes)
+    // Configure TUN interface (Hysteria2 creates it internally)
     if (!ConfigureTunInterface()) {
         AppendServiceLog("[service] Failed to configure TUN interface");
-        // Continue anyway, Xray might have configured it
     }
     
     return true;
@@ -455,41 +438,41 @@ static std::string HandleCommand(const std::string& cmdLine) {
         return "PONG";
     }
     if (cmdLine == "DISCONNECT") {
-        StopXray();
+        StopHysteria2();
         CloseFirewallPorts();  // Close firewall ports on disconnect
         return "OK";
     }
 
     const std::string prefix = "CONNECT_JSON ";
     if (cmdLine.rfind(prefix, 0) == 0) {
-        std::string json = cmdLine.substr(prefix.size());
-        AppendServiceLog("[service] CONNECT_JSON received, config length: " + std::to_string(json.length()));
+        std::string yaml = cmdLine.substr(prefix.size());
+        AppendServiceLog("[service] CONNECT_JSON received (YAML), config length: " + std::to_string(yaml.length()));
         
-        StopXray();
-        AppendServiceLog("[service] Xray stopped (if was running)");
+        StopHysteria2();
+        AppendServiceLog("[service] Hysteria2 stopped (if was running)");
         
-        // Write config first
-        AppendServiceLog("[service] Writing config file...");
-        if (!WriteConfigFile(json)) {
-            AppendServiceLog("[service] ERROR: WriteConfigFile failed");
+        // Write YAML config first
+        AppendServiceLog("[service] Writing Hysteria2 config file...");
+        if (!WriteHysteria2Config(yaml)) {
+            AppendServiceLog("[service] ERROR: WriteHysteria2Config failed");
             return "ERR write_config";
         }
-        AppendServiceLog("[service] Config file written successfully");
+        AppendServiceLog("[service] Hysteria2 config file written successfully");
         
         // Open firewall ports before starting VPN
         AppendServiceLog("[service] Opening firewall ports...");
         OpenFirewallPorts();
         AppendServiceLog("[service] Firewall ports opened");
         
-        // Now start Xray (it will parse server IP from the written config file)
-        AppendServiceLog("[service] Starting Xray...");
-        if (!StartXray()) {
-            AppendServiceLog("[service] ERROR: StartXray failed");
-            CloseFirewallPorts();  // Close ports if Xray fails
-            return "ERR start_xray";
+        // Now start Hysteria2
+        AppendServiceLog("[service] Starting Hysteria2...");
+        if (!StartHysteria2()) {
+            AppendServiceLog("[service] ERROR: StartHysteria2 failed");
+            CloseFirewallPorts();  // Close ports if Hysteria2 fails
+            return "ERR start_hysteria2";
         }
         
-        AppendServiceLog("[service] Xray started successfully, returning OK");
+        AppendServiceLog("[service] Hysteria2 started successfully, returning OK");
         return "OK";
     }
 
