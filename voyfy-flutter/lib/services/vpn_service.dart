@@ -386,7 +386,11 @@ http:
         if (_isWindows) {
           result = await _windowsChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         } else if (_isLinux) {
-          result = await _linuxChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
+          final serverIp = Uri.parse(config).host;
+          result = await _linuxChannel.invokeMethod<dynamic>('connect', {
+            'config': hysteria2Config,
+            'serverIp': serverIp,
+          });
         } else if (_isMacOS) {
           result = await _macosChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         }
@@ -490,6 +494,7 @@ http:
 
   /// Disconnect from VPN
   Future<bool> disconnect() async {
+    print('VPN SERVICE: disconnect() called');
     try {
       _updateStatus(VpnStatus.disconnecting);
       // Let UI render "disconnecting" before completing

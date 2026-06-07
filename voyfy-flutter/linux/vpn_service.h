@@ -17,7 +17,7 @@ class VpnService {
   bool Initialize(FlMethodChannel* channel);
 
   // Connect to VPN with Hysteria2 YAML config
-  bool Connect(const std::string& config);
+  bool Connect(const std::string& config, const std::string& server_ip = "");
 
   // Disconnect from VPN
   bool Disconnect();
@@ -47,7 +47,7 @@ class VpnService {
 
   bool StartHysteria2(const std::string& config_path);
   bool StopHysteria2();
-  bool ConfigureRoutes();
+  bool ConfigureRoutes(const std::string& server_ip = "");
   bool RestoreRoutes();
   bool SaveOriginalRoute();
 
@@ -63,6 +63,9 @@ class VpnService {
   GPid hysteria2_pid_ = 0;
   std::string tun_name_ = "hy2";
   std::string original_route_;
+  std::string original_gateway_;
+  std::string original_dev_;
+  std::string server_ip_;
 };
 
 // Setup VPN MethodChannels on the given messenger.
