@@ -135,7 +135,9 @@ bool VpnService::Connect(const std::string& config) {
 }
 
 bool VpnService::Disconnect() {
+  g_print("VPN C++: Disconnect() called, connected_=%d\n", connected_);
   if (!connected_) {
+    g_print("VPN C++: Already disconnected\n");
     return true;
   }
 
@@ -152,6 +154,7 @@ bool VpnService::Disconnect() {
     status_callback_("disconnected");
   }
 
+  g_print("VPN C++: Disconnect() finished\n");
   return true;
 }
 
@@ -265,29 +268,63 @@ bool VpnService::StopHysteria2() {
 }
 
 bool VpnService::SaveOriginalRoute() {
+  g_print("VPN C++: SaveOriginalRoute() called\n");
   FILE* pipe = popen("ip route show default", "r");
-  if (!pipe) return false;
+  if (!pipe) {
+    g_print("VPN C++: popen failed\n");
+    return false;
+  }
   char buffer[256];
   if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
     original_route_ = buffer;
-    // Strip trailing newline
     original_route_.erase(original_route_.find_last_not_of("\n\r") + 1);
+    g_print("VPN C++: Saved original route: %s\n", original_route_.c_str());
+  } else {
+    g_print("VPN C++: No default route found\n");
   }
   pclose(pipe);
   return true;
 }
 
 bool VpnService::ConfigureRoutes() {
-  // Setup TUN interface IP, bring it up, then redirect all traffic through it.
-  std::string cmd = "pkexec bash -c 'ip addr add 172.16.0.2/30 dev " + tun_name_ +
-                    " 2>/dev/null || true; ip link set " + tun_name_ +
-                    " up; ip route del default 2>/dev/null || true; ip route add default dev " +
-                    tun_name_ + " metric 1'";
-  int ret = std::system(cmd.c_str());
-  return ret == 0;
+  g_print("VPN C++: ConfigureRoutes() called\n");
+
+  // 1. Assign IP to TUN
+  std::string cmd1 = "pkexec ip addr add 172.16.0.2/30 dev " + tun_name_;
+  g_print("VPN C++: %s\n", cmd1.c_str());
+  int ret1 = std::system(cmd1.c_str());
+  g_print("VPN C++: ip addr add returned %d\n", ret1);
+
+  // 2. Bring TUN up
+  std::string cmd2 = "pkexec ip link set " + tun_name_ + " up";
+  g_print("VPN C++: %s\n", cmd2.c_str());
+  int ret2 = std::system(cmd2.c_str());
+  g_print("VPN C++: ip link set up returned %d\n", ret2);
+
+  // 3. Remove old default route
+  std::string cmd3 = "pkexec ip route del default";
+  g_print("VPN C++: %s\n", cmd3.c_str());
+  int ret3 = std::system(cmd3.c_str());
+  g_print("VPN C++: ip route del default returned %d\n", ret3);
+
+  // 4. Add new default route through TUN
+  std::string cmd4 = "pkexec ip route add default dev " + tun_name_ + " metric 1";
+  g_print("VPN C++: %s\n", cmd4.c_str());
+  int ret4 = std::system(cmd4.c_str());
+  g_print("VPN C++: ip route add default returned %d\n", ret4);
+
+  // Verify state
+  g_print("VPN C++: Current TUN state:\n");
+  std::system("ip addr show hy2");
+  g_print("VPN C++: Current default route:\n");
+  std::system("ip route show default");
+
+  return ret1 == 0 && ret2 == 0 && ret4 == 0;
 }
 
 bool VpnService::RestoreRoutes() {
+  g_print("VPN C++: RestoreRoutes() called, original_route=%s\n", original_route_.c_str());
+
   // Parse original route: "default via X.X.X.X dev YYY ..."
   std::string via, dev;
   size_t via_pos = original_route_.find("via ");
@@ -302,13 +339,19 @@ bool VpnService::RestoreRoutes() {
     dev = original_route_.substr(dev_start, dev_end - dev_start);
   }
 
+  g_print("VPN C++: parsed via=%s dev=%s\n", via.c_str(), dev.c_str());
+
   if (!via.empty() && !dev.empty()) {
-    std::string cmd = "pkexec bash -c 'ip route del default dev " + tun_name_ +
-                      " 2>/dev/null || true; ip route add default via " + via +
-                      " dev " + dev + "'";
-    std::system(cmd.c_str());
+    std::string cmd1 = "pkexec ip route del default dev " + tun_name_;
+    g_print("VPN C++: %s\n", cmd1.c_str());
+    std::system(cmd1.c_str());
+
+    std::string cmd2 = "pkexec ip route add default via " + via + " dev " + dev;
+    g_print("VPN C++: %s\n", cmd2.c_str());
+    std::system(cmd2.c_str());
   } else {
-    std::string cmd = "pkexec ip route del default dev " + tun_name_ + " 2>/dev/null || true";
+    std::string cmd = "pkexec ip route del default dev " + tun_name_;
+    g_print("VPN C++: %s\n", cmd.c_str());
     std::system(cmd.c_str());
   }
   return true;
@@ -414,6 +457,7 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
       fl_method_call_respond_error(method_call, "INVALID_ARGS", "Missing config", nullptr, nullptr);
     }
   } else if (strcmp(method, "disconnect") == 0) {
+    g_print("VPN C++: method_call_cb disconnect\n");
     bool result = VpnService::GetInstance().Disconnect();
     fl_method_call_respond_success(method_call, fl_value_new_bool(result), nullptr);
   } else if (strcmp(method, "getStatus") == 0) {
