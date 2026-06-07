@@ -312,4 +312,70 @@ std::string VpnService::CheckDependencies() {
   return result;
 }
 
+static FlMethodChannel* g_vpn_channel = nullptr;
+static FlMethodChannel* g_vpn_data_channel = nullptr;
+
+static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
+                          gpointer user_data) {
+  const gchar* method = fl_method_call_get_name(method_call);
+  FlValue* args = fl_method_call_get_args(method_call);
+
+  if (strcmp(method, "initialize") == 0) {
+    VpnService::GetInstance().Initialize(g_vpn_channel);
+    fl_method_call_respond_success(method_call, fl_value_new_bool(TRUE), nullptr);
+  } else if (strcmp(method, "connect") == 0) {
+    FlValue* config_value = fl_value_lookup_string(args, "config");
+    if (config_value) {
+      const char* config = fl_value_get_string(config_value);
+      bool result = VpnService::GetInstance().Connect(config);
+      fl_method_call_respond_success(method_call, fl_value_new_bool(result), nullptr);
+    } else {
+      fl_method_call_respond_error(method_call, "INVALID_ARGS", "Missing config", nullptr, nullptr);
+    }
+  } else if (strcmp(method, "disconnect") == 0) {
+    bool result = VpnService::GetInstance().Disconnect();
+    fl_method_call_respond_success(method_call, fl_value_new_bool(result), nullptr);
+  } else if (strcmp(method, "getStatus") == 0) {
+    bool is_connected = VpnService::GetInstance().IsConnected();
+    const char* status = is_connected ? "connected" : "disconnected";
+    fl_method_call_respond_success(method_call, fl_value_new_string(status), nullptr);
+  } else if (strcmp(method, "ping") == 0) {
+    fl_method_call_respond_success(method_call, fl_value_new_int(-1), nullptr);
+  } else if (strcmp(method, "checkAndDownloadXray") == 0) {
+    std::string hysteria2_path = VpnService::GetInstance().GetHysteria2Path();
+    bool exists = !hysteria2_path.empty() && access(hysteria2_path.c_str(), X_OK) == 0;
+    fl_method_call_respond_success(method_call, fl_value_new_bool(exists), nullptr);
+  } else if (strcmp(method, "checkDependencies") == 0) {
+    std::string missing = VpnService::GetInstance().CheckDependencies();
+    if (missing.empty()) {
+      fl_method_call_respond_success(method_call, fl_value_new_string(""), nullptr);
+    } else {
+      fl_method_call_respond_success(method_call, fl_value_new_string(missing.c_str()), nullptr);
+    }
+  } else if (strcmp(method, "testConfig") == 0) {
+    FlValue* config_value = fl_value_lookup_string(args, "config");
+    if (config_value) {
+      const char* config = fl_value_get_string(config_value);
+      bool is_valid = config && strlen(config) > 0;
+      fl_method_call_respond_success(method_call, fl_value_new_bool(is_valid), nullptr);
+    } else {
+      fl_method_call_respond_success(method_call, fl_value_new_bool(false), nullptr);
+    }
+  } else {
+    fl_method_call_respond_not_implemented(method_call, nullptr);
+  }
+}
+
+void SetupVpnMethodChannels(FlBinaryMessenger* messenger) {
+  g_vpn_channel = fl_method_channel_new(
+      messenger, "com.voyfy.vpn/linux",
+      FL_METHOD_CODEC(fl_standard_method_codec_new()));
+  fl_method_channel_set_method_call_handler(g_vpn_channel, method_call_cb,
+                                           nullptr, nullptr);
+
+  g_vpn_data_channel = fl_method_channel_new(
+      messenger, "com.voyfy.vpn/linux_data",
+      FL_METHOD_CODEC(fl_standard_method_codec_new()));
+}
+
 }  // namespace voyfy

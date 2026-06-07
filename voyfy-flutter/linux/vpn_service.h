@@ -62,6 +62,10 @@ class VpnService {
   std::string tun_name_ = "hy2";
 };
 
+// Setup VPN MethodChannels on the given messenger.
+// Call this after fl_register_plugins() in my_application.cc.
+void SetupVpnMethodChannels(FlBinaryMessenger* messenger);
+
 }  // namespace voyfy
 
 #endif  // VPN_SERVICE_H_
