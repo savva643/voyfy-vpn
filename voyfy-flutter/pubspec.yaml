@@ -117,7 +117,7 @@ flutter:
           weight: 700
     - family: Gilroy
       fonts:
-        - asset: assets/fonts/Gilroy-ExtraBold.ttf
+        - asset: assets/fonts/Gilroy-Extrabold.ttf
           weight: 800
         - asset: assets/fonts/Gilroy-Black.ttf
           weight: 700
