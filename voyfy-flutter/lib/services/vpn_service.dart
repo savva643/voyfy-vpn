@@ -386,7 +386,15 @@ http:
         if (_isWindows) {
           result = await _windowsChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         } else if (_isLinux) {
-          final serverIp = Uri.parse(config).host;
+          // Hysteria2 URL: hysteria2://<auth>@<host>:<port>... auth may contain /
+          // Uri.parse breaks on / in auth, so extract host manually
+          String serverIp = '';
+          final atIndex = config.lastIndexOf('@');
+          if (atIndex >= 0) {
+            final afterAt = config.substring(atIndex + 1);
+            serverIp = afterAt.split(':')[0].split('?')[0].split('#')[0];
+          }
+          print('VPN SERVICE: Extracted serverIp for Linux: $serverIp');
           result = await _linuxChannel.invokeMethod<dynamic>('connect', {
             'config': hysteria2Config,
             'serverIp': serverIp,
@@ -500,23 +508,26 @@ http:
       // Let UI render "disconnecting" before completing
       await Future.delayed(Duration(milliseconds: 500));
 
+      bool result = false;
       if (_isWindows) {
-        final result = await _windowsChannel.invokeMethod<bool>('disconnect');
-        return result ?? false;
+        result = await _windowsChannel.invokeMethod<bool>('disconnect') ?? false;
       } else if (_isLinux) {
-        final result = await _linuxChannel.invokeMethod<bool>('disconnect');
-        return result ?? false;
+        result = await _linuxChannel.invokeMethod<bool>('disconnect') ?? false;
       } else if (_isMacOS) {
-        final result = await _macosChannel.invokeMethod<bool>('disconnect');
-        return result ?? false;
+        result = await _macosChannel.invokeMethod<bool>('disconnect') ?? false;
       } else if (Platform.isAndroid) {
-        final result = await _androidChannel.invokeMethod<bool>('stopVpn');
+        final androidResult = await _androidChannel.invokeMethod<bool>('stopVpn');
         _updateStatus(VpnStatus.disconnected);
-        return result ?? false;
+        return androidResult ?? false;
       } else if (Platform.isIOS) {
-        final result = await _iosChannel.invokeMethod<bool>('disconnect');
+        final iosResult = await _iosChannel.invokeMethod<bool>('disconnect');
         _updateStatus(VpnStatus.disconnected);
-        return result ?? false;
+        return iosResult ?? false;
+      }
+
+      if (result) {
+        _updateStatus(VpnStatus.disconnected);
+        return true;
       }
 
       // Fallback: kill any local xray process
@@ -541,7 +552,9 @@ http:
     List<String>? blockedApps,
     bool proxyOnly = false,
   }) async {
+    print('VPN SERVICE: toggleConnection called, _currentStatus=$_currentStatus, config=${config != null ? "present" : "null"}');
     if (_currentStatus == VpnStatus.connected || _currentStatus == VpnStatus.connecting) {
+      print('VPN SERVICE: Already connected/connecting, calling disconnect()');
       return disconnect();
     } else {
       if (config == null) {

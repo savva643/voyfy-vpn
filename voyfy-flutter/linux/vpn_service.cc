@@ -138,10 +138,6 @@ bool VpnService::Connect(const std::string& config, const std::string& server_ip
 
 bool VpnService::Disconnect() {
   g_print("VPN C++: Disconnect() called, connected_=%d\n", connected_);
-  if (!connected_) {
-    g_print("VPN C++: Already disconnected\n");
-    return true;
-  }
 
   if (status_callback_) {
     status_callback_("disconnecting");

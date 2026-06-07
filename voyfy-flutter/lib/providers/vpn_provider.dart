@@ -360,13 +360,13 @@ class VpnProvider extends ChangeNotifier {
   /// [whitelistBypass] - Use Russian SNI for whitelist bypass mode
   Future<bool> toggleConnection({List<String>? blockedApps, bool routeAllTraffic = true, bool whitelistBypass = false}) async {
     print('VPN PROVIDER: toggleConnection called, _selectedServer=$_selectedServer, status=$_status, routeAllTraffic=$routeAllTraffic, whitelistBypass=$whitelistBypass');
-    
+
     // Block if currently disconnecting
     if (_status == VpnStatus.disconnecting) {
       print('VPN PROVIDER: Ignoring toggle - currently disconnecting');
       return false;
     }
-    
+
     if (_selectedServer == null) {
       _lastError = VpnError(
         type: 'config_error',
@@ -374,6 +374,12 @@ class VpnProvider extends ChangeNotifier {
       );
       notifyListeners();
       return false;
+    }
+
+    // If already connected or connecting, disconnect immediately without fetching config
+    if (_status == VpnStatus.connected || _status == VpnStatus.connecting) {
+      print('VPN PROVIDER: Already connected/connecting, disconnecting...');
+      return await _vpnService.disconnect();
     }
 
     // Fetch VLESS config from API
