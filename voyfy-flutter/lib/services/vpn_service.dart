@@ -309,6 +309,7 @@ tun:
   name: hy2
   mtu: 1500
   autoRoute: true
+  routeTable: 200
 ''';
       } else if (_isMacOS) {
         tunSection = '''
