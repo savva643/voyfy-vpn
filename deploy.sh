@@ -334,9 +334,33 @@ http {
                 add_header Cache-Control "public, immutable";
             }
         }
+
+        location /wintun {
+            alias /usr/share/nginx/html/wintun;
+            autoindex on;
+            add_header Access-Control-Allow-Origin *;
+            add_header Content-Disposition attachment;
+        }
     }
 }
 EOF
+
+    # Step: Download WinTun files for self-hosting
+    echo "Downloading WinTun files..."
+    mkdir -p /usr/share/nginx/html/wintun
+    if [ ! -f /usr/share/nginx/html/wintun/wintun-0.14.1.zip ]; then
+        curl -L -o /usr/share/nginx/html/wintun/wintun-0.14.1.zip \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+            https://www.wintun.net/builds/wintun-0.14.1.zip || echo "Warning: wintun download failed, upload manually to /usr/share/nginx/html/wintun/"
+    fi
+    if [ -f /usr/share/nginx/html/wintun/wintun-0.14.1.zip ]; then
+        cd /usr/share/nginx/html/wintun
+        unzip -jo wintun-0.14.1.zip "wintun/bin/amd64/wintun.dll" -d .
+        unzip -jo wintun-0.14.1.zip "wintun/bin/x86/wintun.dll" -d .
+        unzip -jo wintun-0.14.1.zip "wintun/bin/arm64/wintun.dll" -d .
+        cd - >/dev/null
+        echo "WinTun DLLs extracted for serving"
+    fi
 
     # Copy HTTPS config as main nginx.conf
     cp $PROJECT_DIR/nginx/nginx-https.conf $PROJECT_DIR/nginx/nginx.conf

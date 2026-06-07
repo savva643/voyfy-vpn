@@ -7,12 +7,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <linux/if_tun.h>
-#include <net/if.h>
-#include <sys/ioctl.h>
+#include <signal.h>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -20,6 +18,32 @@
 #include <vector>
 
 namespace voyfy {
+
+namespace {
+
+// Check if the Hysteria2 binary already has cap_net_admin capability
+bool HasCapNetAdmin(const std::string& path) {
+  std::string cmd = "getcap \"" + path + "\" 2>/dev/null | grep cap_net_admin > /dev/null";
+  int ret = std::system(cmd.c_str());
+  return ret == 0;
+}
+
+// Request root password via pkexec GUI dialog (like UAC on Windows)
+// to grant cap_net_admin capability to the Hysteria2 binary.
+// Returns true if user entered password and setcap succeeded.
+bool GrantCapNetAdmin(const std::string& path) {
+  std::string cmd = "pkexec setcap cap_net_admin=+ep \"" + path + "\"";
+  int ret = std::system(cmd.c_str());
+  return ret == 0;
+}
+
+// Check if a process with given PID is still alive
+bool IsProcessAlive(GPid pid) {
+  if (pid <= 0) return false;
+  return kill(pid, 0) == 0;
+}
+
+}  // namespace
 
 VpnService& VpnService::GetInstance() {
   static VpnService instance;
@@ -36,7 +60,7 @@ bool VpnService::Connect(const std::string& config) {
     Disconnect();
   }
 
-  // Save config to temp file
+  // Save Hysteria2 YAML config to temp file
   std::string config_path = GetConfigPath();
   std::ofstream config_file(config_path);
   if (!config_file.is_open()) {
@@ -45,21 +69,23 @@ bool VpnService::Connect(const std::string& config) {
   config_file << config;
   config_file.close();
 
-  // Setup TUN device
-  if (!SetupTunDevice()) {
+  // Locate Hysteria2 binary
+  std::string hysteria2_path = GetHysteria2Path();
+  if (access(hysteria2_path.c_str(), X_OK) != 0) {
     return false;
   }
 
-  // Configure routes
-  if (!ConfigureRoutes()) {
-    RestoreRoutes();
-    StopXray();
-    return false;
+  // Ensure Hysteria2 has CAP_NET_ADMIN so it can create TUN without root.
+  // If not, show a GUI password dialog (pkexec) — same UX as Windows UAC.
+  if (!HasCapNetAdmin(hysteria2_path)) {
+    if (!GrantCapNetAdmin(hysteria2_path)) {
+      // User cancelled or password incorrect
+      return false;
+    }
   }
 
-  // Start Xray
-  if (!StartXray(config_path)) {
-    RestoreRoutes();
+  // Start Hysteria2 (it handles TUN creation and routing itself via autoRoute)
+  if (!StartHysteria2(config_path)) {
     return false;
   }
 
@@ -74,7 +100,7 @@ bool VpnService::Connect(const std::string& config) {
       std::this_thread::sleep_for(std::chrono::seconds(1));
       // Update data usage from TUN interface stats
       GetDataUsage(bytes_received_, bytes_sent_);
-      
+
       // Send data usage update via channel
       if (channel_) {
         g_autoptr(FlValue) args = fl_value_new_map();
@@ -97,16 +123,11 @@ bool VpnService::Disconnect() {
     status_callback_("disconnecting");
   }
 
+  StopHysteria2();
   RestoreRoutes();
-  StopXray();
-  
-  if (tun_fd_ >= 0) {
-    close(tun_fd_);
-    tun_fd_ = -1;
-  }
 
   connected_ = false;
-  
+
   if (status_callback_) {
     status_callback_("disconnected");
   }
@@ -123,15 +144,15 @@ void VpnService::GetDataUsage(int64_t& received, int64_t& sent) {
   if (!tun_name_.empty()) {
     std::string rx_path = "/sys/class/net/" + tun_name_ + "/statistics/rx_bytes";
     std::string tx_path = "/sys/class/net/" + tun_name_ + "/statistics/tx_bytes";
-    
+
     std::ifstream rx_file(rx_path);
     std::ifstream tx_file(tx_path);
-    
+
     if (rx_file.is_open()) {
       rx_file >> received;
       rx_file.close();
     }
-    
+
     if (tx_file.is_open()) {
       tx_file >> sent;
       tx_file.close();
@@ -143,17 +164,17 @@ void VpnService::SetStatusCallback(std::function<void(const std::string&)> callb
   status_callback_ = callback;
 }
 
-bool VpnService::StartXray(const std::string& config_path) {
-  std::string xray_path = GetXrayPath();
-  
-  // Check if xray exists
-  if (access(xray_path.c_str(), X_OK) != 0) {
+bool VpnService::StartHysteria2(const std::string& config_path) {
+  std::string hysteria2_path = GetHysteria2Path();
+
+  // Check if Hysteria2 exists
+  if (access(hysteria2_path.c_str(), X_OK) != 0) {
     return false;
   }
 
   GPid pid;
   gchar* argv[] = {
-    const_cast<gchar*>(xray_path.c_str()),
+    const_cast<gchar*>(hysteria2_path.c_str()),
     const_cast<gchar*>("-c"),
     const_cast<gchar*>(config_path.c_str()),
     nullptr
@@ -178,101 +199,117 @@ bool VpnService::StartXray(const std::string& config_path) {
     return false;
   }
 
-  xray_pid_ = pid;
-  return true;
-}
+  hysteria2_pid_ = pid;
 
-bool VpnService::StopXray() {
-  if (xray_pid_ > 0) {
-    kill(xray_pid_, SIGTERM);
-    waitpid(xray_pid_, nullptr, 0);
-    xray_pid_ = 0;
-  }
-  return true;
-}
+  // Give Hysteria2 a moment to start up and create the TUN device
+  std::this_thread::sleep_for(std::chrono::seconds(3));
 
-bool VpnService::SetupTunDevice() {
-  // Create TUN device
-  tun_fd_ = open("/dev/net/tun", O_RDWR);
-  if (tun_fd_ < 0) {
+  // Verify the process actually survived (not crashed due to missing privileges)
+  if (!IsProcessAlive(hysteria2_pid_)) {
+    hysteria2_pid_ = 0;
     return false;
   }
 
-  struct ifreq ifr;
-  memset(&ifr, 0, sizeof(ifr));
-  ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-  strncpy(ifr.ifr_name, "tun_voyfy", IFNAMSIZ);
-
-  if (ioctl(tun_fd_, TUNSETIFF, &ifr) < 0) {
-    close(tun_fd_);
-    tun_fd_ = -1;
-    return false;
-  }
-
-  tun_name_ = ifr.ifr_name;
-
-  // Configure TUN interface
-  std::string cmd = "ip link set " + tun_name_ + " up";
-  system(cmd.c_str());
-  
-  cmd = "ip addr add 10.0.0.2/24 dev " + tun_name_;
-  system(cmd.c_str());
-
   return true;
 }
 
-bool VpnService::ConfigureRoutes() {
-  // Add default route through TUN
-  std::string cmd = "ip route add default dev " + tun_name_ + " metric 100";
-  int ret = system(cmd.c_str());
-  return ret == 0;
+bool VpnService::StopHysteria2() {
+  if (hysteria2_pid_ > 0) {
+    kill(hysteria2_pid_, SIGTERM);
+    waitpid(hysteria2_pid_, nullptr, 0);
+    hysteria2_pid_ = 0;
+  }
+  // Fallback: also kill any stray hysteria2 processes
+  std::system("pkill -f 'hysteria2 -c /tmp/voyfy_hysteria2.yaml' 2>/dev/null || true");
+  return true;
 }
 
 bool VpnService::RestoreRoutes() {
-  // Remove TUN routes
+  // Fallback: remove any leftover default route through our TUN interface
   if (!tun_name_.empty()) {
     std::string cmd = "ip route del default dev " + tun_name_ + " 2>/dev/null || true";
-    system(cmd.c_str());
+    std::system(cmd.c_str());
   }
   return true;
 }
 
-std::string VpnService::GetXrayPath() {
-  // Try multiple possible locations for xray binary
+std::string VpnService::GetHysteria2Path() {
+  // Try multiple possible locations for Hysteria2 binary
   const char* home = g_getenv("HOME");
   std::vector<std::string> possible_paths;
-  
-  // 1. ~/bin/xray (where Dart XrayDownloader saves it)
+
+  // 1. Application support directory (where Dart Hysteria2Downloader saves it)
+  //    path_provider uses g_get_user_data_dir() + app_id on Linux.
+  //    Common locations: ~/.local/share/Voyfy/bin/hysteria2
+  //                    ~/.local/share/com.keeppixel.voyfy/bin/hysteria2
   if (home) {
-    possible_paths.push_back(std::string(home) + "/bin/xray");
+    possible_paths.push_back(std::string(home) + "/.local/share/Voyfy/bin/hysteria2");
+    possible_paths.push_back(std::string(home) + "/.local/share/com.keeppixel.voyfy/bin/hysteria2");
   }
-  
+
   // 2. Same directory as executable
   gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
   if (exe_path) {
     gchar* dir = g_path_get_dirname(exe_path);
     g_free(exe_path);
-    possible_paths.push_back(std::string(dir) + "/xray");
+    possible_paths.push_back(std::string(dir) + "/hysteria2");
     g_free(dir);
   }
-  
-  // 3. System paths
-  possible_paths.push_back("/usr/local/bin/xray");
-  possible_paths.push_back("/opt/voyfy/xray");
-  
-  // Find first existing xray
+
+  // 3. ~/bin/hysteria2
+  if (home) {
+    possible_paths.push_back(std::string(home) + "/bin/hysteria2");
+  }
+
+  // 4. System paths
+  possible_paths.push_back("/usr/local/bin/hysteria2");
+  possible_paths.push_back("/usr/bin/hysteria2");
+  possible_paths.push_back("/opt/voyfy/hysteria2");
+
+  // Find first existing hysteria2
   for (const auto& path : possible_paths) {
     if (access(path.c_str(), X_OK) == 0) {
       return path;
     }
   }
-  
+
   // Return default if not found
   return possible_paths.empty() ? "" : possible_paths[0];
 }
 
 std::string VpnService::GetConfigPath() {
-  return "/tmp/voyfy_config.json";
+  return "/tmp/voyfy_hysteria2.yaml";
+}
+
+std::string VpnService::CheckDependencies() {
+  struct DepCheck {
+    const char* cmd;
+    const char* pkg;
+  };
+  static const DepCheck deps[] = {
+    {"which pkexec  >/dev/null 2>&1", "policykit-1 / polkit"},
+    {"which setcap  >/dev/null 2>&1", "libcap2-bin / libcap"},
+    {"which getcap  >/dev/null 2>&1", "libcap2-bin / libcap"},
+    {"which ip      >/dev/null 2>&1", "iproute2"},
+    {"which pkill   >/dev/null 2>&1", "procps / psmisc"},
+  };
+
+  std::vector<std::string> missing;
+  for (const auto& d : deps) {
+    if (std::system(d.cmd) != 0) {
+      missing.emplace_back(d.pkg);
+    }
+  }
+
+  if (missing.empty()) {
+    return "";
+  }
+  std::string result = "Missing system utilities: ";
+  for (size_t i = 0; i < missing.size(); ++i) {
+    if (i > 0) result += ", ";
+    result += missing[i];
+  }
+  return result;
 }
 
 }  // namespace voyfy

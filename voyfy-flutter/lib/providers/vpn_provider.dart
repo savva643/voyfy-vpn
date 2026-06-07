@@ -407,14 +407,19 @@ class VpnProvider extends ChangeNotifier {
             vlessUrl = allConfigs['whitelistBypass'] as String?;
             print('VPN PROVIDER: Using whitelist bypass config');
           } else {
-            vlessUrl = config['vlessUrl'] as String?;
+            // Use hysteria2Url for Hysteria2 protocol
+            vlessUrl = config['hysteria2Url'] as String? ?? config['vlessUrl'] as String?;
           }
           
           // Save vlessUrl to selectedServer for later use (ping, etc.)
           _selectedServer = _selectedServer!.copyWith(vlessUrl: vlessUrl);
-          print('VPN PROVIDER: Got vlessUrl: $vlessUrl');
+          print('VPN PROVIDER: Got config URL: $vlessUrl');
           if (vlessUrl != null) {
-            print('VPN PROVIDER: Extracted pbk: ${Uri.parse(vlessUrl).queryParameters['pbk']}');
+            // For Hysteria2 URLs, no pbk parameter
+            final isHysteria = vlessUrl.startsWith('hysteria2://');
+            if (!isHysteria) {
+              print('VPN PROVIDER: Extracted pbk: ${Uri.parse(vlessUrl).queryParameters['pbk']}');
+            }
           }
           print('VPN PROVIDER: Saved vlessUrl to selectedServer');
           // Save to persistent storage for retry

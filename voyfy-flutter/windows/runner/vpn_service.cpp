@@ -1238,37 +1238,21 @@ void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
                                 return;
                             }
 
-                            // Step 2: Create config and connect
-                            std::string xrayJson = CreateXrayConfig(configCopy);
-                            if (xrayJson.empty()) {
-                                AppendNativeLog("[native] CreateXrayConfig returned empty");
-                                SendStatus("error");
-                                resultPtr->Success(flutter::EncodableValue(false));
-                                delete resultPtr;
-                                return;
-                            }
-
+                            // Step 2: Send YAML config directly to service
                             std::string resp;
-                            bool ok = PipeSendCommand(std::string("CONNECT_JSON ") + xrayJson, &resp);
+                            bool ok = PipeSendCommand(std::string("CONNECT_JSON ") + configCopy, &resp);
                             AppendNativeLog(std::string("[native] CONNECT_JSON resp=") + resp);
                             
                             if (ok && resp == "OK") {
-                                // Fast check - just verify Xray process is running
-                                // Don't wait - connection is async in service
-                                bool xrayRunning = IsXrayRunning();
-                                OutputDebugStringW((L"[VPN] Xray running: " + std::to_wstring(xrayRunning) + L"\n").c_str());
-                                
-                                if (xrayRunning) {
-                                    SendStatus("connected");
-                                    SendDataUsage(0, 0);
-                                    success = true;
-                                } else {
-                                    // Xray didn't start - error
-                                    OutputDebugStringW(L"[VPN] Xray not running after connect\n");
-                                    SendStatus("error");
-                                }
+                                // Service confirmed Hysteria2 started successfully
+                                OutputDebugStringW(L"[VPN] Hysteria2 service started OK\n");
+                                SendStatus("connected");
+                                SendDataUsage(0, 0);
+                                success = true;
                             } else {
-                                OutputDebugStringW(L"[VPN] CONNECT_JSON failed\n");
+                                OutputDebugStringW(L"[VPN] CONNECT_JSON failed, resp=");
+                                OutputDebugStringW(std::wstring(resp.begin(), resp.end()).c_str());
+                                OutputDebugStringW(L"\n");
                                 SendStatus("error");
                             }
                             
@@ -1291,12 +1275,16 @@ void SetupVpnMethodChannel(flutter::FlutterViewController* controller) {
         }
         else if (method == "disconnect") {
             SendStatus("disconnecting");
-            // Stats thread is managed by Windows service
-            std::string resp;
-            PipeSendCommand("DISCONNECT", &resp);
-            AppendNativeLog(std::string("[native] DISCONNECT resp=") + resp);
-            SendStatus("disconnected");
-            result->Success(flutter::EncodableValue(true));
+            // Fire-and-forget DISCONNECT to service - don't block UI thread
+            std::thread([](flutter::MethodResult<flutter::EncodableValue>* resultPtr) {
+                std::string resp;
+                bool ok = PipeSendCommand("DISCONNECT", &resp);
+                AppendNativeLog(std::string("[native] DISCONNECT async resp=") + resp + " ok=" + (ok ? "1" : "0"));
+                SendStatus("disconnected");
+                resultPtr->Success(flutter::EncodableValue(true));
+                delete resultPtr;
+            }, result.release()).detach();
+            return;  // result ownership transferred to thread
         }
         else if (method == "getStatus") {
             result->Success(flutter::EncodableValue(g_status));

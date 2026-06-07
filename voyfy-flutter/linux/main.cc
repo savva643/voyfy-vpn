@@ -1,6 +1,8 @@
 #include "my_application.h"
 #include "vpn_service.h"
 #include <flutter_linux/flutter_linux.h>
+#include <unistd.h>
+#include <cstring>
 
 static FlMethodChannel* vpn_channel = nullptr;
 static FlMethodChannel* vpn_data_channel = nullptr;
@@ -35,17 +37,24 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
     // In production, you could use system ping command
     fl_method_call_respond_success(method_call, fl_value_new_int(-1), nullptr);
   } else if (strcmp(method, "checkAndDownloadXray") == 0) {
-    // Check if xray exists at expected paths
-    std::string xray_path = voyfy::VpnService::GetInstance().GetXrayPath();
-    bool exists = !xray_path.empty() && access(xray_path.c_str(), X_OK) == 0;
+    // Check if Hysteria2 binary exists at expected paths
+    std::string hysteria2_path = voyfy::VpnService::GetInstance().GetHysteria2Path();
+    bool exists = !hysteria2_path.empty() && access(hysteria2_path.c_str(), X_OK) == 0;
     fl_method_call_respond_success(method_call, fl_value_new_bool(exists), nullptr);
+  } else if (strcmp(method, "checkDependencies") == 0) {
+    // Check that pkexec, setcap, getcap, ip, pkill are available
+    std::string missing = voyfy::VpnService::GetInstance().CheckDependencies();
+    if (missing.empty()) {
+      fl_method_call_respond_success(method_call, fl_value_new_string(""), nullptr);
+    } else {
+      fl_method_call_respond_success(method_call, fl_value_new_string(missing.c_str()), nullptr);
+    }
   } else if (strcmp(method, "testConfig") == 0) {
-    // Test config by parsing it
+    // Test config: for Hysteria2 just ensure the YAML config is non-empty
     FlValue* config_value = fl_value_lookup_string(args, "config");
     if (config_value) {
       const char* config = fl_value_get_string(config_value);
-      // Basic validation - check if it starts with vless://
-      bool is_valid = config && strncmp(config, "vless://", 8) == 0;
+      bool is_valid = config && strlen(config) > 0;
       fl_method_call_respond_success(method_call, fl_value_new_bool(is_valid), nullptr);
     } else {
       fl_method_call_respond_success(method_call, fl_value_new_bool(false), nullptr);

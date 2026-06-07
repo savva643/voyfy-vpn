@@ -18,7 +18,7 @@ class Hysteria2Downloader {
 
   /// Platform and architecture info
   static PlatformArchInfo get platformInfo {
-    final rawPlatform = Platform.operatingSystem; // windows, linux, macos
+    final rawPlatform = Platform.operatingSystem; // windows, linux, macos, android, ios
     String arch;
     
     // Map platform names for backend API
@@ -37,12 +37,20 @@ class Hysteria2Downloader {
     }
     
     // Detect architecture
-    if (Platform.version.contains('arm64') || 
-        Platform.version.contains('aarch64') ||
-        Platform.environment['PROCESSOR_ARCHITECTURE']?.toLowerCase().contains('arm') == true) {
+    final version = Platform.version.toLowerCase();
+    if (version.contains('arm64') || version.contains('aarch64')) {
       arch = 'arm64';
+    } else if (version.contains('arm')) {
+      arch = 'arm'; // 32-bit ARM
+    } else if (version.contains('x86_64') || version.contains('amd64')) {
+      arch = 'amd64';
     } else {
-      arch = 'amd64'; // x86_64
+      // Default based on platform
+      if (rawPlatform == 'android' || rawPlatform == 'ios') {
+        arch = 'arm64'; // Most mobile devices are arm64
+      } else {
+        arch = 'amd64';
+      }
     }
     
     // Override for testing or specific platforms
@@ -134,8 +142,8 @@ class Hysteria2Downloader {
       final info = platformInfo;
       print('HYSTERIA2 DOWNLOADER: Platform: ${info.platform}, Arch: ${info.arch}');
       
-      // GitHub release URL for Hysteria2 v2.5.1
-      const version = 'app/v2.5.1';
+      // GitHub release URL for Hysteria2 v2.9.2
+      const version = 'app/v2.9.2';
       final downloadUrl = 'https://github.com/apernet/hysteria/releases/download/$version/hysteria-${info.platform}-${info.arch}${info.extension}';
       print('HYSTERIA2 DOWNLOADER: Downloading from: $downloadUrl');
       
@@ -198,34 +206,138 @@ class Hysteria2Downloader {
     return null;
   }
 
+  /// Download WinTun DLL for TUN mode
+  Future<bool> downloadWinTun() async {
+    try {
+      Directory dir;
+      if (Platform.isWindows) {
+        dir = _getWindowsPublicDir();
+      } else {
+        final appDir = await getApplicationSupportDirectory();
+        dir = Directory('${appDir.path}/bin');
+      }
+      final wintunPath = '${dir.path}${Platform.pathSeparator}wintun.dll';
+      final file = File(wintunPath);
+      
+      if (await file.exists()) {
+        print('HYSTERIA2 DOWNLOADER: WinTun already exists');
+        return true;
+      }
+      
+      print('HYSTERIA2 DOWNLOADER: Downloading WinTun from own server...');
+      
+      // Download zip file directly with User-Agent
+      final response = await http.get(
+        Uri.parse('https://vip.necsoura.ru/wintun/wintun-0.14.1.zip'),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/zip,*/*',
+        },
+      ).timeout(const Duration(seconds: 60));
+      
+      print('HYSTERIA2 DOWNLOADER: WinTun response status: ${response.statusCode}');
+      print('HYSTERIA2 DOWNLOADER: WinTun downloaded ${response.bodyBytes.length} bytes');
+      
+      if (response.statusCode != 200) {
+        print('HYSTERIA2 DOWNLOADER: Failed to download WinTun: ${response.statusCode}');
+        return false;
+      }
+      
+      // Extract wintun.dll from zip
+      print('HYSTERIA2 DOWNLOADER: Decoding ZIP archive...');
+      final archive = ZipDecoder().decodeBytes(response.bodyBytes);
+      print('HYSTERIA2 DOWNLOADER: Archive contains ${archive.length} files');
+      for (final file in archive) {
+        print('HYSTERIA2 DOWNLOADER: Archive file: ${file.name}');
+        if (file.name.toLowerCase().contains('wintun.dll') && file.name.toLowerCase().contains('x64')) {
+          final data = file.content as List<int>;
+          await File(wintunPath).writeAsBytes(data);
+          print('HYSTERIA2 DOWNLOADER: WinTun downloaded successfully to $wintunPath');
+          return true;
+        }
+      }
+      
+      print('HYSTERIA2 DOWNLOADER: WinTun DLL not found in archive');
+      return false;
+    } catch (e, stackTrace) {
+      print('HYSTERIA2 DOWNLOADER: Error downloading WinTun: $e');
+      print('HYSTERIA2 DOWNLOADER: Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  /// Download tun2socks binary for Android from user's server
+  Future<bool> downloadTun2socksForAndroid() async {
+    if (!Platform.isAndroid) return false;
+    
+    try {
+      final appDir = await getApplicationSupportDirectory();
+      final binDir = Directory('${appDir.path}/bin');
+      if (!await binDir.exists()) {
+        await binDir.create(recursive: true);
+      }
+      
+      final tun2socksPath = '${binDir.path}/tun2socks';
+      final file = File(tun2socksPath);
+      
+      if (await file.exists()) {
+        print('HYSTERIA2 DOWNLOADER: tun2socks already exists');
+        return true;
+      }
+      
+      final info = platformInfo;
+      final arch = info.arch == 'arm64' ? 'arm64' : 'arm';
+      print('HYSTERIA2 DOWNLOADER: Downloading tun2socks for Android ($arch)...');
+      
+      final downloadUrl = 'https://vip.necsoura.ru/tun2socks/tun2socks-android-$arch';
+      final response = await http.get(
+        Uri.parse(downloadUrl),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36',
+        },
+      ).timeout(const Duration(seconds: 60));
+      
+      if (response.statusCode != 200) {
+        print('HYSTERIA2 DOWNLOADER: Failed to download tun2socks: ${response.statusCode}');
+        return false;
+      }
+      
+      await file.writeAsBytes(response.bodyBytes);
+      
+      // Make executable
+      await Process.run('chmod', ['+x', tun2socksPath]);
+      
+      print('HYSTERIA2 DOWNLOADER: tun2socks downloaded to $tun2socksPath');
+      return true;
+    } catch (e, stackTrace) {
+      print('HYSTERIA2 DOWNLOADER: Error downloading tun2socks: $e');
+      print('HYSTERIA2 DOWNLOADER: Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
   /// Full download and verify flow
   Future<String?> downloadAndVerify() async {
     // Check if already exists
     if (await isBinaryExists()) {
       print('HYSTERIA2 DOWNLOADER: Binary already exists');
-      final path = await binaryPath;
-      return path;
-    }
-    
-    // Download
-    final path = await downloadHysteria2();
-    if (path == null) {
-      return null;
-    }
-    
-    // Verify (optional) - Hysteria2 doesn't provide checksums
-    final expectedHash = await fetchChecksum();
-    if (expectedHash != null) {
-      final isValid = await verifyChecksum(expectedHash);
-      if (!isValid) {
-        print('HYSTERIA2 DOWNLOADER: Checksum verification failed!');
-        // Delete corrupted file
-        await File(path).delete();
+    } else {
+      // Download Hysteria2
+      final path = await downloadHysteria2();
+      if (path == null) {
         return null;
       }
-      print('HYSTERIA2 DOWNLOADER: Checksum verified successfully');
     }
     
+    // Download WinTun for TUN mode (Windows only)
+    await downloadWinTun();
+    
+    // Download tun2socks for Android
+    if (Platform.isAndroid) {
+      await downloadTun2socksForAndroid();
+    }
+    
+    final path = await binaryPath;
     return path;
   }
 

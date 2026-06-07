@@ -86,6 +86,10 @@ class VpnService {
   static const MethodChannel _androidChannel = MethodChannel('com.voyfy.vpn/android');
   static const MethodChannel _androidDataChannel = MethodChannel('com.voyfy.vpn/android_data');
 
+  // iOS MethodChannels
+  static const MethodChannel _iosChannel = MethodChannel('com.voyfy.vpn/ios');
+  static const MethodChannel _iosDataChannel = MethodChannel('com.voyfy.vpn/ios_data');
+
   // Platform check
   bool get _isWindows => Platform.isWindows;
   bool get _isLinux => Platform.isLinux;
@@ -167,7 +171,19 @@ class VpnService {
           return null;
         });
         final result = await _linuxChannel.invokeMethod<bool>('initialize');
-        return result ?? false;
+        if (!(result ?? false)) return false;
+
+        // Check system dependencies (pkexec, setcap, getcap, ip, pkill)
+        final depResult = await _linuxChannel.invokeMethod<String>('checkDependencies');
+        if (depResult != null && depResult.isNotEmpty) {
+          print('VPN SERVICE: Linux dependencies missing: $depResult');
+          _errorController.add(VpnError(
+            type: 'missing_dependencies',
+            message: depResult,
+          ));
+          return false;
+        }
+        return true;
       } else if (_isMacOS) {
         _macosChannel.setMethodCallHandler((call) async {
           if (call.method == 'onStatusChanged') {
@@ -187,6 +203,26 @@ class VpnService {
           return null;
         });
         final result = await _macosChannel.invokeMethod<bool>('initialize');
+        return result ?? false;
+      } else if (_isIOS) {
+        _iosChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onStatusChanged') {
+            final statusStr = call.arguments as String;
+            _updateStatus(_parseDesktopStatus(statusStr));
+          }
+          return null;
+        });
+        _iosDataChannel.setMethodCallHandler((call) async {
+          if (call.method == 'onDataUsageUpdated') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            _updateDataUsage(DataUsage(
+              bytesReceived: args['bytesReceived'] as int? ?? 0,
+              bytesSent: args['bytesSent'] as int? ?? 0,
+            ));
+          }
+          return null;
+        });
+        final result = await _iosChannel.invokeMethod<bool>('initialize');
         return result ?? false;
       } else {
         // Mobile platforms – not fully implemented for Hysteria2
@@ -219,6 +255,101 @@ class VpnService {
 
   VpnStatus _parseDesktopStatus(String status) => _parseWindowsStatus(status);
 
+  /// Parse Hysteria2 URL and generate YAML config
+  String _generateHysteria2Config(String url) {
+    try {
+      if (!url.startsWith('hysteria2://')) {
+        throw Exception('Invalid URL scheme: must be hysteria2://');
+      }
+
+      // Remove hysteria2:// prefix
+      final withoutPrefix = url.substring('hysteria2://'.length);
+
+      // Find the @ that separates auth from host
+      final atIndex = withoutPrefix.indexOf('@');
+      if (atIndex == -1) {
+        throw Exception('Invalid URL format: missing @ separator');
+      }
+
+      // Extract auth (everything before @)
+      final auth = withoutPrefix.substring(0, atIndex);
+
+      // Parse the rest as URI to get host, port, query
+      final rest = withoutPrefix.substring(atIndex + 1);
+      final uri = Uri.parse('http://$rest'); // Use http as dummy scheme
+
+      final host = uri.host;
+      final port = uri.port;
+      final query = uri.queryParameters;
+
+      if (host.isEmpty) {
+        throw Exception('Invalid URL: host is empty');
+      }
+
+      final obfs = query['obfs'] ?? 'salamander';
+      final obfsPassword = query['obfs-password'] ?? 'voyfy_obfs_secret';
+      final sni = query['sni'] ?? host;
+
+      // Platform-specific TUN config
+      String tunSection;
+      if (_isWindows) {
+        tunSection = '''
+tun:
+  name: Hysteria2
+  mtu: 1500
+  autoRoute: false
+  postUp:
+    - cmd: powershell -Command "Get-NetAdapter -InterfaceDescription 'Hysteria2' | Set-NetIPInterface -InterfaceMetric 1"
+  postDown:
+    - cmd: powershell -Command "Get-NetAdapter -InterfaceDescription 'Hysteria2' | Set-NetIPInterface -InterfaceMetric 50"
+''';
+      } else if (_isLinux) {
+        tunSection = '''
+tun:
+  name: hy2
+  mtu: 1500
+  autoRoute: true
+''';
+      } else if (_isMacOS) {
+        tunSection = '''
+tun:
+  name: utun123
+  mtu: 1500
+  autoRoute: true
+''';
+      } else {
+        tunSection = '';
+      }
+
+      return '''
+server: $host:$port
+auth: $auth
+
+bandwidth:
+  up: 100 mbps
+  down: 100 mbps
+
+obfs:
+  type: $obfs
+  salamander:
+    password: $obfsPassword
+
+tls:
+  sni: $sni
+  insecure: true
+${tunSection}
+socks5:
+  listen: 127.0.0.1:1080
+
+http:
+  listen: 127.0.0.1:8080
+'''.trim();
+    } catch (e) {
+      print('VPN SERVICE: Failed to parse Hysteria2 URL: $e');
+      throw Exception('Invalid Hysteria2 URL: $e');
+    }
+  }
+
   /// Connect using Hysteria2 config (desktop only)
   Future<bool> connect({
     required String config,
@@ -244,22 +375,104 @@ class VpnService {
           return false;
         }
 
+        // Convert Hysteria2 URL to YAML config
+        final hysteria2Config = _generateHysteria2Config(config);
+        print('VPN SERVICE: Generated Hysteria2 config');
+
         // Platform-specific connect using native MethodChannels
+        dynamic result;
         if (_isWindows) {
-          final result = await _windowsChannel.invokeMethod<bool>('connect', {'config': config});
-          return result ?? false;
+          result = await _windowsChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         } else if (_isLinux) {
-          final result = await _linuxChannel.invokeMethod<bool>('connect', {'config': config});
-          return result ?? false;
+          result = await _linuxChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         } else if (_isMacOS) {
-          final result = await _macosChannel.invokeMethod<bool>('connect', {'config': config});
-          return result ?? false;
+          result = await _macosChannel.invokeMethod<dynamic>('connect', {'config': hysteria2Config});
         }
-        return false;
+        
+        print('VPN SERVICE: Native response: $result');
+        
+        // C++ service returns "OK" string or "ERR..." on failure
+        if (result != null && (result == true || result.toString().startsWith('OK'))) {
+          _updateStatus(VpnStatus.connected);
+          return true;
+        } else {
+          _updateStatus(VpnStatus.error);
+          String errorMsg;
+          if (_isLinux && (result == false || result == null)) {
+            errorMsg = 'VPN failed. Make sure you enter the administrator password when prompted, or check your server config.';
+          } else {
+            errorMsg = 'Native service failed: ${result ?? "no response"}';
+          }
+          _errorController.add(VpnError(
+            type: 'connection_error',
+            message: errorMsg,
+          ));
+          return false;
+        }
+      } else if (Platform.isAndroid) {
+        // Android: download binaries, generate config, start VpnService
+        final hysteria2Ready = await _ensureHysteria2Exists();
+        if (!hysteria2Ready) {
+          _errorController.add(VpnError(
+            type: 'hysteria2_not_found',
+            message: 'Failed to download Hysteria2 core for Android',
+          ));
+          _updateStatus(VpnStatus.error);
+          return false;
+        }
+
+        // Convert Hysteria2 URL to YAML config (mobile version: no tun, just socks5)
+        final hysteria2Config = _generateHysteria2Config(config);
+        print('VPN SERVICE: Generated Hysteria2 config for Android');
+
+        // Start VPN via Android VpnService
+        final result = await _androidChannel.invokeMethod<bool>('startVpn', {
+          'config': hysteria2Config,
+        });
+
+        print('VPN SERVICE: Android startVpn response: $result');
+
+        if (result == true) {
+          _updateStatus(VpnStatus.connected);
+          return true;
+        } else {
+          _updateStatus(VpnStatus.error);
+          _errorController.add(VpnError(
+            type: 'connection_error',
+            message: 'Android VPN service failed to start',
+          ));
+          return false;
+        }
+      } else if (Platform.isIOS) {
+        // iOS: Pass Hysteria2 YAML config to Packet Tunnel Provider
+        final hysteria2Config = _generateHysteria2Config(config);
+        print('VPN SERVICE: Generated Hysteria2 config for iOS');
+
+        final result = await _iosChannel.invokeMethod<dynamic>('connect', {
+          'config': hysteria2Config,
+        });
+
+        print('VPN SERVICE: iOS connect response: $result');
+
+        if (result != null && (result == true || result.toString().startsWith('OK'))) {
+          _updateStatus(VpnStatus.connected);
+          return true;
+        } else {
+          _updateStatus(VpnStatus.error);
+          _errorController.add(VpnError(
+            type: 'connection_error',
+            message: 'iOS VPN service failed: ${result ?? "no response"}',
+          ));
+          return false;
+        }
       } else {
-        // Mobile not supported yet
-        print('VPN SERVICE: Mobile platforms not supported for Hysteria2');
+        // iOS not implemented yet
+        print('VPN SERVICE: iOS not supported yet for Hysteria2');
         _updateStatus(VpnStatus.error);
+        _errorController.add(VpnError(
+          type: 'platform_not_supported',
+          message: 'iOS Hysteria2 support is coming soon',
+        ));
         return false;
       }
     } catch (e) {
@@ -277,6 +490,8 @@ class VpnService {
   Future<bool> disconnect() async {
     try {
       _updateStatus(VpnStatus.disconnecting);
+      // Let UI render "disconnecting" before completing
+      await Future.delayed(Duration(milliseconds: 500));
 
       if (_isWindows) {
         final result = await _windowsChannel.invokeMethod<bool>('disconnect');
@@ -286,6 +501,14 @@ class VpnService {
         return result ?? false;
       } else if (_isMacOS) {
         final result = await _macosChannel.invokeMethod<bool>('disconnect');
+        return result ?? false;
+      } else if (Platform.isAndroid) {
+        final result = await _androidChannel.invokeMethod<bool>('stopVpn');
+        _updateStatus(VpnStatus.disconnected);
+        return result ?? false;
+      } else if (Platform.isIOS) {
+        final result = await _iosChannel.invokeMethod<bool>('disconnect');
+        _updateStatus(VpnStatus.disconnected);
         return result ?? false;
       }
 
@@ -333,21 +556,8 @@ class VpnService {
   /// Ensure Hysteria2 binary exists
   Future<bool> _ensureHysteria2Exists() async {
     try {
-      if (_isWindows) {
-        final result = await _windowsChannel.invokeMethod<bool>('checkAndDownloadXray');
-        if (result == true) return true;
-        // Fallback to direct download
-        return await Hysteria2Downloader.downloadAndVerifyHysteria2();
-      } else if (_isLinux) {
-        final result = await _linuxChannel.invokeMethod<bool>('checkAndDownloadXray');
-        if (result == true) return true;
-        return await Hysteria2Downloader.downloadAndVerifyHysteria2();
-      } else if (_isMacOS) {
-        final result = await _macosChannel.invokeMethod<bool>('checkAndDownloadXray');
-        if (result == true) return true;
-        return await Hysteria2Downloader.downloadAndVerifyHysteria2();
-      }
-      return false;
+      // Download Hysteria2 directly from GitHub
+      return await Hysteria2Downloader.downloadAndVerifyHysteria2();
     } catch (e) {
       print('VPN SERVICE: Ensure hysteria2 error: $e');
       return false;
@@ -389,8 +599,14 @@ class VpnService {
   String _extractHostFromConfig(String config) {
     try {
       if (config.startsWith('hysteria2://')) {
-        final uri = Uri.tryParse(config);
-        if (uri != null) return uri.host;
+        // Manual parsing to handle auth with / characters
+        final withoutPrefix = config.substring('hysteria2://'.length);
+        final atIndex = withoutPrefix.indexOf('@');
+        if (atIndex != -1) {
+          final rest = withoutPrefix.substring(atIndex + 1);
+          final uri = Uri.parse('http://$rest');
+          return uri.host;
+        }
       }
     } catch (e) {
       print('VPN SERVICE: Error extracting host: $e');
@@ -443,6 +659,12 @@ class VpnService {
         return _parseDesktopStatus(result ?? 'disconnected');
       } else if (_isMacOS) {
         final result = await _macosChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
+      } else if (Platform.isAndroid) {
+        final result = await _androidChannel.invokeMethod<String>('getVpnStatus');
+        return _parseWindowsStatus(result ?? 'disconnected');
+      } else if (Platform.isIOS) {
+        final result = await _iosChannel.invokeMethod<String>('getStatus');
         return _parseDesktopStatus(result ?? 'disconnected');
       }
       return _currentStatus;
@@ -560,9 +782,14 @@ class VpnService {
       } else if (_isMacOS) {
         final result = await _macosChannel.invokeMethod<String>('getStatus');
         return _parseDesktopStatus(result ?? 'disconnected');
-      } else {
-        return _currentStatus;
+      } else if (Platform.isAndroid) {
+        final result = await _androidChannel.invokeMethod<String>('getVpnStatus');
+        return _parseWindowsStatus(result ?? 'disconnected');
+      } else if (Platform.isIOS) {
+        final result = await _iosChannel.invokeMethod<String>('getStatus');
+        return _parseDesktopStatus(result ?? 'disconnected');
       }
+      return _currentStatus;
     } catch (e) {
       return _currentStatus;
     }

@@ -1,7 +1,14 @@
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601  // Windows 7
+#endif
+
+#include <winsock2.h>
 #include <windows.h>
-#include <shlobj.h>
+#include <tlhelp32.h>
 #include <iphlpapi.h>
+#include <shlobj.h>
 #include <winhttp.h>
+#include <wininet.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -14,6 +21,7 @@
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "wininet.lib")
 
 static bool FileExists(const std::wstring& path) {
     DWORD attribs = GetFileAttributesW(path.c_str());
@@ -101,85 +109,92 @@ static void AppendServiceLog(const std::string& line) {
 
 static bool WriteHysteria2Config(const std::string& configYaml) {
     std::wstring dir = GetDataDir();
-    if (dir.empty()) return false;
+    if (dir.empty()) {
+        AppendServiceLog("[service] ERROR: GetDataDir returned empty");
+        return false;
+    }
+    
+    AppendServiceLog("[service] Data dir: " + WStringToString(dir));
+    
+    // Create directory if it doesn't exist
+    if (!CreateDirectoryW(dir.c_str(), NULL)) {
+        DWORD err = GetLastError();
+        if (err != ERROR_ALREADY_EXISTS) {
+            AppendServiceLog("[service] ERROR: Cannot create directory: " + std::to_string(err));
+            return false;
+        }
+        AppendServiceLog("[service] Directory already exists");
+    } else {
+        AppendServiceLog("[service] Directory created");
+    }
     
     std::wstring configPath = dir + L"\\config.yaml";
+    AppendServiceLog("[service] Opening: " + WStringToString(configPath));
+    
     std::ofstream file(configPath, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         AppendServiceLog("[service] ERROR: Cannot open config.yaml for writing");
         return false;
     }
+    
     file << configYaml;
+    file.flush();
+    bool success = !file.fail();
     file.close();
     
-    AppendServiceLog("[service] Hysteria2 config written: " + WStringToString(configPath));
+    if (success) {
+        AppendServiceLog("[service] Hysteria2 config written successfully: " + WStringToString(configPath));
+    } else {
+        AppendServiceLog("[service] ERROR: Failed to write config.yaml");
+    }
     
-    return true;
+    return success;
 }
 
+static bool SetSystemProxy(bool enable);
+static bool ConfigureTunRoutes();
+
 static bool StopHysteria2() {
+    // Disable system proxy first
+    SetSystemProxy(false);
+    
+    AppendServiceLog("[service] Stopping Hysteria2...");
+    
     if (g_hysteria2Process) {
         TerminateProcess(g_hysteria2Process, 0);
+        WaitForSingleObject(g_hysteria2Process, 3000);
         CloseHandle(g_hysteria2Process);
         g_hysteria2Process = nullptr;
     }
+    
+    // Kill any remaining hysteria2.exe processes
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pe;
+        pe.dwSize = sizeof(pe);
+        if (Process32First(hSnap, &pe)) {
+            do {
+                if (_wcsicmp(pe.szExeFile, L"hysteria2.exe") == 0) {
+                    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                    if (hProcess) {
+                        TerminateProcess(hProcess, 0);
+                        CloseHandle(hProcess);
+                    }
+                }
+            } while (Process32Next(hSnap, &pe));
+        }
+        CloseHandle(hSnap);
+    }
+    
+    // Restore DNS to DHCP
+    AppendServiceLog("[service] Restoring DNS settings");
+    system("netsh interface ip set dns \"Wi-Fi\" dhcp >nul 2>&1");
+    system("netsh interface ip set dns \"Ethernet\" dhcp >nul 2>&1");
+    
+    AppendServiceLog("[service] Hysteria2 stopped");
     return true;
 }
 
-
-// Parse server IP from config file
-static std::string ParseServerIPFromFile() {
-    std::wstring dir = GetDataDir();
-    if (dir.empty()) return "";
-    
-    std::wstring configPath = dir + L"\\config.json";
-    std::ifstream file(configPath);
-    if (!file.is_open()) return "";
-    
-    std::string json((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
-    file.close();
-    
-    size_t addrPos = json.find("\"address\"");
-    if (addrPos == std::string::npos) return "";
-    
-    size_t colonPos = json.find(":", addrPos);
-    if (colonPos == std::string::npos) return "";
-    
-    size_t quoteStart = json.find("\"", colonPos);
-    if (quoteStart == std::string::npos) return "";
-    
-    size_t quoteEnd = json.find("\"", quoteStart + 1);
-    if (quoteEnd == std::string::npos) return "";
-    
-    return json.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-}
-
-// Add bypass route for VPN server IP using route command
-static bool AddServerBypassRoute(const std::string& serverIP) {
-    if (serverIP.empty()) {
-        AppendServiceLog("[service] Server IP empty, cannot add bypass route");
-        return false;
-    }
-    
-    AppendServiceLog("[service] Adding bypass route for server: " + serverIP);
-    
-    // Use route.exe command which is more reliable
-    std::string cmd = "route delete " + serverIP + " 2>nul";
-    system(cmd.c_str());
-    
-    // Add host route /32 with gateway 192.168.1.1 and metric 1
-    std::string addCmd = "route add " + serverIP + " mask 255.255.255.255 192.168.1.1 metric 1";
-    int result = system(addCmd.c_str());
-    
-    if (result == 0) {
-        AppendServiceLog("[service] Bypass route added successfully via route.exe");
-        return true;
-    } else {
-        AppendServiceLog("[service] Failed to add bypass route, result: " + std::to_string(result));
-        return false;
-    }
-}
 
 // Open firewall ports for VPN (1080, 10085, 8444, 53)
 static bool OpenFirewallPorts() {
@@ -232,8 +247,82 @@ static std::string WStringToString(const std::wstring& wstr) {
     return str;
 }
 
-static bool RunNetshCommand(const std::wstring& args) {
-    std::wstring cmd = L"netsh " + args;
+static bool SetSystemProxy(bool enable) {
+    HKEY hKey;
+    LONG result = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", 
+                                 0, KEY_WRITE, &hKey);
+    if (result != ERROR_SUCCESS) {
+        AppendServiceLog("[service] Failed to open registry key for proxy");
+        return false;
+    }
+    
+    DWORD proxyEnable = enable ? 1 : 0;
+    RegSetValueExW(hKey, L"ProxyEnable", 0, REG_DWORD, (BYTE*)&proxyEnable, sizeof(proxyEnable));
+    
+    if (enable) {
+        std::wstring proxyServer = L"127.0.0.1:8080";
+        RegSetValueExW(hKey, L"ProxyServer", 0, REG_SZ, (BYTE*)proxyServer.c_str(), 
+                        static_cast<DWORD>((proxyServer.length() + 1) * sizeof(wchar_t)));
+        AppendServiceLog("[service] System proxy enabled: 127.0.0.1:8080");
+    } else {
+        RegDeleteValueW(hKey, L"ProxyServer");
+        AppendServiceLog("[service] System proxy disabled");
+    }
+    
+    RegCloseKey(hKey);
+    
+    // Notify system of proxy change
+    InternetSetOptionW(nullptr, INTERNET_OPTION_SETTINGS_CHANGED, nullptr, 0);
+    InternetSetOptionW(nullptr, INTERNET_OPTION_REFRESH, nullptr, 0);
+    
+    return true;
+}
+
+static bool ConfigureTunRoutes() {
+    // Wait for Hysteria2 TUN interface to appear
+    DWORD ifIndex = 0;
+    bool found = false;
+    
+    for (int i = 0; i < 30; i++) { // Wait up to 15 seconds
+        Sleep(500);
+        
+        // Get adapter list using GetAdaptersAddresses (Unicode friendly names)
+        ULONG bufLen = 0;
+        DWORD dwRetVal = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, nullptr, &bufLen);
+        if (dwRetVal != ERROR_BUFFER_OVERFLOW) continue;
+        
+        std::vector<BYTE> buffer(bufLen);
+        PIP_ADAPTER_ADDRESSES pAddrs = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.data());
+        
+        if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, pAddrs, &bufLen) == NO_ERROR) {
+            PIP_ADAPTER_ADDRESSES pCurr = pAddrs;
+            while (pCurr) {
+                std::wstring friendlyName(pCurr->FriendlyName);
+                std::wstring desc(pCurr->Description);
+                if (friendlyName.find(L"Hysteria2") != std::wstring::npos || 
+                    friendlyName.find(L"Wintun") != std::wstring::npos ||
+                    desc.find(L"Wintun") != std::wstring::npos) {
+                    ifIndex = pCurr->IfIndex;
+                    found = true;
+                    AppendServiceLog("[service] TUN interface found: idx=" + std::to_string(ifIndex) + " name=" + WStringToString(friendlyName));
+                    break;
+                }
+                pCurr = pCurr->Next;
+            }
+        }
+        if (found) break;
+    }
+    
+    if (!found) {
+        AppendServiceLog("[service] TUN interface not detected after 15s");
+        return false;
+    }
+    
+    // Configure default route through TUN with low metric
+    Sleep(1000); // Wait for interface to be ready
+    
+    // Add default route with metric 1 (highest priority)
+    std::wstring cmd = L"route add 0.0.0.0 mask 0.0.0.0 10.0.0.1 metric 1 if " + std::to_wstring(ifIndex);
     
     STARTUPINFOW si = { sizeof(si) };
     si.dwFlags = STARTF_USESHOWWINDOW;
@@ -241,78 +330,25 @@ static bool RunNetshCommand(const std::wstring& args) {
     PROCESS_INFORMATION pi = {};
     
     BOOL created = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE,
-                                  CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-                                  nullptr, nullptr, &si, &pi);
-    if (!created) {
-        return false;
-    }
-    
-    WaitForSingleObject(pi.hProcess, 5000);
-    DWORD exitCode = 0;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    
-    return exitCode == 0;
-}
-
-static bool ConfigureTunInterface() {
-    // Wait for xray0 interface to appear
-    DWORD ifIndex = 0;
-    for (int i = 0; i < 60; i++) {
-        Sleep(500);
-        
-        // Get interface index
-        ULONG buflen = sizeof(IP_ADAPTER_INFO);
-        PIP_ADAPTER_INFO pAdapterInfo = (PIP_ADAPTER_INFO)malloc(buflen);
-        if (GetAdaptersInfo(pAdapterInfo, &buflen) == ERROR_BUFFER_OVERFLOW) {
-            free(pAdapterInfo);
-            pAdapterInfo = (PIP_ADAPTER_INFO)malloc(buflen);
-        }
-        
-        if (GetAdaptersInfo(pAdapterInfo, &buflen) == NO_ERROR) {
-            PIP_ADAPTER_INFO pAdapter = pAdapterInfo;
-            while (pAdapter) {
-                std::string desc(pAdapter->Description);
-                if (desc.find("Xray") != std::string::npos || desc.find("Wintun") != std::string::npos) {
-                    ifIndex = pAdapter->Index;
-                    free(pAdapterInfo);
-                    AppendServiceLog("[service] TUN interface found: idx=" + std::to_string(ifIndex));
-                    goto found;
-                }
-                pAdapter = pAdapter->Next;
-            }
-        }
-        free(pAdapterInfo);
-    }
-    AppendServiceLog("[service] TUN interface not detected after 30s");
-    return false;
-    
-found:
-    // Configure IP address using netsh
-    Sleep(1000); // Wait for interface to be ready
-    
-    // Add IP address
-    if (!RunNetshCommand(L"interface ip set address name=\"xray0\" source=static addr=10.0.0.2 mask=255.255.255.0 gateway=10.0.0.1")) {
-        AppendServiceLog("[service] Failed to set IP address");
-    } else {
-        AppendServiceLog("[service] IP address configured");
-    }
-    
-    // Add DNS
-    RunNetshCommand(L"interface ip set dns name=\"xray0\" source=static addr=1.1.1.1");
-    RunNetshCommand(L"interface ip add dns name=\"xray0\" addr=8.8.8.8 index=2");
-    AppendServiceLog("[service] DNS configured");
-    
-    // Add default route with low metric
-    // First delete existing default routes for this interface
-    RunNetshCommand(L"interface ip delete route 0.0.0.0 interface=\"xray0\"");
-    
-    // Add new default route
-    if (RunNetshCommand(L"interface ip add route 0.0.0.0/0 interface=\"xray0\" nexthop=10.0.0.1 metric=1")) {
-        AppendServiceLog("[service] Default route added");
+                                  CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (created) {
+        WaitForSingleObject(pi.hProcess, 5000);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        AppendServiceLog("[service] Default route added via TUN");
     } else {
         AppendServiceLog("[service] Failed to add default route");
+    }
+    
+    // Set DNS to use through TUN
+    cmd = L"netsh interface ip set dns name=\"Hysteria2\" static 1.1.1.1";
+    created = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE,
+                              CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (created) {
+        WaitForSingleObject(pi.hProcess, 3000);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        AppendServiceLog("[service] DNS configured on TUN");
     }
     
     return true;
@@ -339,22 +375,36 @@ static bool StartHysteria2() {
         AppendServiceLog("[service] config.yaml missing in data directory");
         return false;
     }
+    
+    // Check for wintun.dll (required for TUN mode)
+    std::wstring wintunPath = dataDir + L"\\wintun.dll";
+    if (FileExists(wintunPath)) {
+        WIN32_FILE_ATTRIBUTE_DATA fad;
+        if (GetFileAttributesExW(wintunPath.c_str(), GetFileExInfoStandard, &fad)) {
+            LARGE_INTEGER size;
+            size.HighPart = fad.nFileSizeHigh;
+            size.LowPart = fad.nFileSizeLow;
+            AppendServiceLog("[service] wintun.dll found: " + std::to_string(size.QuadPart) + " bytes");
+        }
+    } else {
+        AppendServiceLog("[service] wintun.dll NOT found in data directory, TUN will not work");
+    }
+    
     AppendServiceLog("[service] All files found");
 
-    // Add bypass route for VPN server before starting Hysteria2
-    std::string serverIP = ParseServerIPFromFile();
-    if (!serverIP.empty()) {
-        AppendServiceLog("[service] Server IP: " + serverIP);
-        AddServerBypassRoute(serverIP);
-    } else {
-        AppendServiceLog("[service] Failed to parse server IP from config");
-    }
+    // Redirect stdout/stderr to log file for diagnostics
+    std::wstring logPath = dataDir + L"\\hysteria2.log";
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), nullptr, TRUE };
+    HANDLE hLogFile = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     // Hysteria2 command line - client mode with config
     std::wstring cmdLine = L"\"" + hysteria2Path + L"\" client -c \"" + configPath + L"\"";
     AppendServiceLog("[service] Command line: " + WStringToString(cmdLine));
     
     STARTUPINFOW si = { sizeof(si) };
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = hLogFile;
+    si.hStdError = hLogFile;
     PROCESS_INFORMATION pi = {};
     
     BOOL created = CreateProcessW(
@@ -362,12 +412,16 @@ static bool StartHysteria2() {
         cmdLine.data(), 
         nullptr, 
         nullptr, 
-        FALSE,
+        TRUE,  // Inherit handles
         CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
         nullptr, 
-        dataDir.c_str(),  // Working directory = data dir
+        dataDir.c_str(),  // Working directory = data dir (where wintun.dll is)
         &si, 
         &pi);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        CloseHandle(hLogFile);
+    }
         
     if (!created) {
         DWORD err = GetLastError();
@@ -385,15 +439,27 @@ static bool StartHysteria2() {
     if (GetExitCodeProcess(g_hysteria2Process, &exitCode)) {
         if (exitCode != STILL_ACTIVE) {
             AppendServiceLog("[service] Hysteria2 exited immediately with code: " + std::to_string(exitCode));
+            // Read hysteria2.log for error details
+            std::ifstream logFile(WStringToString(dataDir) + "\\hysteria2.log");
+            if (logFile.is_open()) {
+                std::string line;
+                while (std::getline(logFile, line)) {
+                    AppendServiceLog("[hysteria2] " + line);
+                }
+            }
             return false;
         }
         AppendServiceLog("[service] Hysteria2 is running");
     }
     
-    // Configure TUN interface (Hysteria2 creates it internally)
-    if (!ConfigureTunInterface()) {
-        AppendServiceLog("[service] Failed to configure TUN interface");
-    }
+    // Hysteria2 works as SOCKS5/HTTP proxy and TUN interface
+    AppendServiceLog("[service] Hysteria2 proxy mode active (SOCKS5: 127.0.0.1:1080, HTTP: 127.0.0.1:8080)");
+    
+    // Enable system proxy to redirect traffic through HTTP proxy
+    SetSystemProxy(true);
+    
+    // Configure TUN routes for full VPN tunneling
+    ConfigureTunRoutes();
     
     return true;
 }
