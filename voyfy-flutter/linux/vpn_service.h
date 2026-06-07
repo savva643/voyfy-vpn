@@ -5,6 +5,7 @@
 #include <gtk/gtk.h>
 #include <string>
 #include <memory>
+#include <functional>
 
 namespace voyfy {
 

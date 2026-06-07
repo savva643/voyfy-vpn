@@ -66,12 +66,14 @@ static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
 
 static void register_plugins(FlPluginRegistry* registry) {
   // Register VPN MethodChannel
-  FlBinaryMessenger* messenger = fl_plugin_registry_get_messenger(registry);
+  g_autoptr(FlPluginRegistrar) registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "VoyfyVpnPlugin");
+  FlBinaryMessenger* messenger = fl_plugin_registrar_get_messenger(registrar);
   
   vpn_channel = fl_method_channel_new(messenger, "com.voyfy.vpn/linux",
                                      FL_METHOD_CODEC(fl_standard_method_codec_new()));
   fl_method_channel_set_method_call_handler(vpn_channel, method_call_cb,
-                                           g_object_ref(registry), g_object_unref);
+                                           nullptr, nullptr);
                                            
   vpn_data_channel = fl_method_channel_new(messenger, "com.voyfy.vpn/linux_data",
                                           FL_METHOD_CODEC(fl_standard_method_codec_new()));
