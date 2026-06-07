@@ -84,8 +84,17 @@ bool VpnService::Connect(const std::string& config) {
     }
   }
 
-  // Start Hysteria2 (it handles TUN creation and routing itself via autoRoute)
+  // Start Hysteria2 (TUN created, but routes managed manually)
   if (!StartHysteria2(config_path)) {
+    return false;
+  }
+
+  // Save current default route so we can restore it on disconnect
+  SaveOriginalRoute();
+
+  // Setup VPN routes via pkexec (redirect all traffic through TUN)
+  if (!ConfigureRoutes()) {
+    StopHysteria2();
     return false;
   }
 
@@ -101,12 +110,23 @@ bool VpnService::Connect(const std::string& config) {
       // Update data usage from TUN interface stats
       GetDataUsage(bytes_received_, bytes_sent_);
 
-      // Send data usage update via channel
+      // Send data usage update via channel (must be on platform thread)
       if (channel_) {
-        g_autoptr(FlValue) args = fl_value_new_map();
-        fl_value_set_string_take(args, "bytesReceived", fl_value_new_int(bytes_received_));
-        fl_value_set_string_take(args, "bytesSent", fl_value_new_int(bytes_sent_));
-        fl_method_channel_invoke_method(channel_, "onDataUsageUpdated", args, nullptr, nullptr, nullptr);
+        struct DataUsagePayload {
+          FlMethodChannel* channel;
+          int64_t received;
+          int64_t sent;
+        };
+        auto* payload = new DataUsagePayload{channel_, bytes_received_, bytes_sent_};
+        g_idle_add([](gpointer user_data) -> gboolean {
+          auto* p = static_cast<DataUsagePayload*>(user_data);
+          g_autoptr(FlValue) args = fl_value_new_map();
+          fl_value_set_string_take(args, "bytesReceived", fl_value_new_int(p->received));
+          fl_value_set_string_take(args, "bytesSent", fl_value_new_int(p->sent));
+          fl_method_channel_invoke_method(p->channel, "onDataUsageUpdated", args, nullptr, nullptr, nullptr);
+          delete p;
+          return G_SOURCE_REMOVE;
+        }, payload);
       }
     }
   }).detach();
@@ -215,19 +235,68 @@ bool VpnService::StartHysteria2(const std::string& config_path) {
 
 bool VpnService::StopHysteria2() {
   if (hysteria2_pid_ > 0) {
+    // Send SIGTERM first
     kill(hysteria2_pid_, SIGTERM);
-    waitpid(hysteria2_pid_, nullptr, 0);
+
+    // Wait up to 3 seconds for graceful shutdown
+    bool terminated = false;
+    for (int i = 0; i < 30; ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      int status = 0;
+      pid_t result = waitpid(hysteria2_pid_, &status, WNOHANG);
+      if (result == hysteria2_pid_) {
+        terminated = true;
+        break;
+      }
+    }
+
+    // Force kill if still alive
+    if (!terminated && kill(hysteria2_pid_, 0) == 0) {
+      kill(hysteria2_pid_, SIGKILL);
+      waitpid(hysteria2_pid_, nullptr, 0);
+    }
+
     hysteria2_pid_ = 0;
   }
+
   // Fallback: also kill any stray hysteria2 processes
   std::system("pkill -f 'hysteria2 -c /tmp/voyfy_hysteria2.yaml' 2>/dev/null || true");
   return true;
 }
 
+bool VpnService::SaveOriginalRoute() {
+  // Save current default route to a temp file for later restoration
+  std::system("ip route show default > /tmp/voyfy_orig_route.txt 2>/dev/null");
+  std::ifstream route_file("/tmp/voyfy_orig_route.txt");
+  if (route_file.is_open()) {
+    std::getline(route_file, original_route_);
+    route_file.close();
+  }
+  return true;
+}
+
+bool VpnService::ConfigureRoutes() {
+  // Redirect all traffic through the TUN interface via pkexec.
+  // Hysteria2 is already connected to the server; we just swap the default route.
+  std::string cmd = "pkexec bash -c 'ip route del default 2>/dev/null; ip route add default dev " +
+                    tun_name_ + " metric 1'";
+  int ret = std::system(cmd.c_str());
+  return ret == 0;
+}
+
 bool VpnService::RestoreRoutes() {
-  // Fallback: remove any leftover default route through our TUN interface
-  if (!tun_name_.empty()) {
-    std::string cmd = "ip route del default dev " + tun_name_ + " 2>/dev/null || true";
+  // Restore original default route (via pkexec so it works without root)
+  if (!original_route_.empty()) {
+    // First remove the VPN default route
+    std::string del_cmd = "pkexec ip route del default dev " + tun_name_ + " 2>/dev/null || true";
+    std::system(del_cmd.c_str());
+
+    // Then restore the original default route
+    std::string restore_cmd = "pkexec ip route add " + original_route_ + " 2>/dev/null || true";
+    std::system(restore_cmd.c_str());
+  } else {
+    // Fallback: just remove VPN default route if we don't know the original
+    std::string cmd = "pkexec ip route del default dev " + tun_name_ + " 2>/dev/null || true";
     std::system(cmd.c_str());
   }
   return true;

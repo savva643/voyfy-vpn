@@ -308,8 +308,9 @@ tun:
 tun:
   name: hy2
   mtu: 1500
-  autoRoute: true
-  routeTable: 200
+  autoRoute: false
+  ipv4: 172.16.0.2/30
+  ipv6: fd00:dead:beef::2/126
 ''';
       } else if (_isMacOS) {
         tunSection = '''

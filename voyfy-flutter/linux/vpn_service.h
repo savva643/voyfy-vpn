@@ -47,7 +47,9 @@ class VpnService {
 
   bool StartHysteria2(const std::string& config_path);
   bool StopHysteria2();
+  bool ConfigureRoutes();
   bool RestoreRoutes();
+  bool SaveOriginalRoute();
 
   std::string GetConfigPath();
 
@@ -60,6 +62,7 @@ class VpnService {
 
   GPid hysteria2_pid_ = 0;
   std::string tun_name_ = "hy2";
+  std::string original_route_;
 };
 
 // Setup VPN MethodChannels on the given messenger.
