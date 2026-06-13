@@ -6,7 +6,7 @@ require('dotenv').config();
 const config = require('./config');
 const logger = require('./utils/logger');
 const { initDatabase } = require('./db');
-const { authenticate, requireAdmin } = require('./middleware/auth');
+const { authenticate, requireAdmin, verifyServerApiKey } = require('./middleware/auth');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -266,10 +266,10 @@ app.get('/api/user/profile', authenticate, userController.getProfile);
 // ==========================================
 // Server self-registration (uses pairing code)
 app.post('/api/servers/register', serverController.registerServer);
-app.post('/api/servers/:id/heartbeat', serverController.serverHeartbeat);
+app.post('/api/servers/:id/heartbeat', verifyServerApiKey, serverController.serverHeartbeat);
 app.post('/api/servers/verify-code', serverController.verifyPairingCode);
 // Server sync - get clients list for Xray config
-app.get('/api/servers/:id/clients', serverController.getServerClients);
+app.get('/api/servers/:id/clients', verifyServerApiKey, serverController.getServerClients);
 
 // Admin server listing with full details
 app.get('/api/admin/servers', authenticate, requireAdmin, serverController.getAdminServers);

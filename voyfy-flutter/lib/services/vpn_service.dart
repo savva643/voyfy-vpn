@@ -290,46 +290,47 @@ class VpnService {
       final obfsPassword = query['obfs-password'] ?? 'voyfy_obfs_secret';
       final sni = query['sni'] ?? host;
 
-      // Platform-specific TUN config
-      String tunSection;
+      // Platform-specific config
+      String proxySection;
       if (_isWindows) {
-        tunSection = '''
+        proxySection = '''
 tun:
   name: Hysteria2
   mtu: 1500
-  autoRoute: false
+  autoRoute: true
+  stack: winsvc
   postUp:
     - cmd: powershell -Command "Get-NetAdapter -InterfaceDescription 'Hysteria2' | Set-NetIPInterface -InterfaceMetric 1"
   postDown:
     - cmd: powershell -Command "Get-NetAdapter -InterfaceDescription 'Hysteria2' | Set-NetIPInterface -InterfaceMetric 50"
 ''';
       } else if (_isLinux) {
-        tunSection = '''
+        proxySection = '''
 tun:
   name: hy2
   mtu: 1500
-  autoRoute: false
+  autoRoute: true
   ipv4: 172.16.0.2/30
   ipv6: fd00:dead:beef::2/126
 ''';
       } else if (_isMacOS) {
-        tunSection = '''
+        proxySection = '''
 tun:
   name: utun123
   mtu: 1500
   autoRoute: true
 ''';
       } else {
-        tunSection = '';
+        // Android / iOS: socks5 mode (VpnService handles routing)
+        proxySection = '''
+socks5:
+  listen: 127.0.0.1:1080
+''';
       }
 
       return '''
 server: $host:$port
 auth: $auth
-
-bandwidth:
-  up: 100 mbps
-  down: 100 mbps
 
 obfs:
   type: $obfs
@@ -339,13 +340,7 @@ obfs:
 tls:
   sni: $sni
   insecure: true
-${tunSection}
-socks5:
-  listen: 127.0.0.1:1080
-
-http:
-  listen: 127.0.0.1:8080
-'''.trim();
+${proxySection}'''.trim();
     } catch (e) {
       print('VPN SERVICE: Failed to parse Hysteria2 URL: $e');
       throw Exception('Invalid Hysteria2 URL: $e');

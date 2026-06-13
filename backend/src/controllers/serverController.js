@@ -8,6 +8,14 @@ const { generateSubscription } = require('./subscriptionController');
  */
 const getServers = async (req, res) => {
   try {
+    // Auto-deactivate servers that haven't sent heartbeat in 5 minutes
+    await query(
+      `UPDATE vpn_servers SET is_active = false 
+       WHERE is_active = true AND last_seen IS NOT NULL 
+       AND last_seen < NOW() - INTERVAL '5 minutes'`,
+      []
+    );
+
     const includePremium = req.user ? true : false;
 
     let serversResult;
@@ -303,7 +311,11 @@ const registerServer = async (req, res) => {
       name, country, countryCode, host, port = 443,
       publicKey, serverNames, shortId,
       pairingCode,
-      premium = false
+      premium = false,
+      protocol = 'hysteria2',
+      password,
+      obfsPassword,
+      masqueradeUrl,
     } = req.body;
 
     // Validate pairing code if provided
@@ -347,10 +359,12 @@ const registerServer = async (req, res) => {
         `UPDATE vpn_servers SET
          name = $1, country = $2, country_code = $3, port = $4,
          public_key = $5, server_names = $6, short_id = $7,
-         premium = $8, provider = $9, is_active = true, last_seen = NOW()
+         premium = $8, provider = $9, is_active = true, last_seen = NOW(),
+         protocol = $11, password = $12, obfs_password = $13, masquerade_url = $14
          WHERE id = $10`,
         [serverName, serverCountry, countryCode || serverCountry, port, publicKey,
-         JSON.stringify(serverNames || []), shortId, serverPremium, serverProvider, serverId]
+         JSON.stringify(serverNames || []), shortId, serverPremium, serverProvider, serverId,
+         protocol || 'hysteria2', password || null, obfsPassword || null, masqueradeUrl || null]
       );
 
       // Mark pairing code as used
@@ -385,8 +399,9 @@ const registerServer = async (req, res) => {
     
     await query(
       `INSERT INTO vpn_servers (id, name, country, country_code, host, port,
-       protocol, public_key, server_names, short_id, premium, provider, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, NOW())`,
+       protocol, public_key, server_names, short_id, premium, provider, is_active, created_at,
+       password, obfs_password, masquerade_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, NOW(), $13, $14, $15)`,
       [
         serverId,
         serverName,
@@ -394,12 +409,15 @@ const registerServer = async (req, res) => {
         finalCountryCode,
         host,
         port,
-        'vless',
+        protocol || 'hysteria2',
         publicKey,
         JSON.stringify(serverNames || []),
         shortId,
         serverPremium,
-        serverProvider
+        serverProvider,
+        password || null,
+        obfsPassword || null,
+        masqueradeUrl || null,
       ]
     );
 
@@ -468,7 +486,13 @@ const serverHeartbeat = async (req, res) => {
     const { id } = req.params;
     const { loadPercent, currentUsers, ping } = req.body;
     
-    // Обновляем нагрузку, пользователей, пинг и время последнего контакта
+    // Verify server exists first
+    const serverCheck = await query('SELECT id FROM vpn_servers WHERE id = $1', [id]);
+    if (serverCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Server not found' });
+    }
+    
+    // Update load, users, ping and last seen time
     await query(
       `UPDATE vpn_servers SET load_percentage = $1, current_users = $2, ping_ms = $3, last_seen = NOW(), is_active = true WHERE id = $4`,
       [loadPercent || 0, currentUsers || 0, ping || null, id]

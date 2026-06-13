@@ -241,7 +241,10 @@ const initDatabase = async () => {
       ADD COLUMN IF NOT EXISTS current_users INTEGER DEFAULT 0,
       ADD COLUMN IF NOT EXISTS ping_ms INTEGER,
       ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP,
-      ADD COLUMN IF NOT EXISTS provider VARCHAR(255)
+      ADD COLUMN IF NOT EXISTS provider VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS password TEXT,
+      ADD COLUMN IF NOT EXISTS obfs_password TEXT,
+      ADD COLUMN IF NOT EXISTS masquerade_url TEXT
     `);
 
     // Create default admin user if not exists

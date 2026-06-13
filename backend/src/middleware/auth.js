@@ -141,8 +141,43 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+/**
+ * Verify VPN server API key from Authorization header
+ * Used by VPN servers for heartbeat and client sync
+ */
+const verifyServerApiKey = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Server API key required' 
+      });
+    }
+
+    const apiKey = authHeader.substring(7);
+    
+    if (!apiKey || apiKey !== process.env.ADMIN_API_KEY) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Invalid server API key' 
+      });
+    }
+
+    next();
+  } catch (err) {
+    logger.error('Server API key verification error', err);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
 module.exports = {
   authenticate,
   requireAdmin,
   optionalAuth,
+  verifyServerApiKey,
 };

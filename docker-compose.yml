@@ -29,6 +29,10 @@ services:
       - "5432:5432"
     networks:
       - voyfy-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U voyfy -d voyfy_vpn"]
       interval: 10s
@@ -56,6 +60,10 @@ services:
       - "4000:4000"
     networks:
       - voyfy-network
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,6 +83,10 @@ services:
       - "443:443"
     networks:
       - voyfy-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     depends_on:
       - api
 

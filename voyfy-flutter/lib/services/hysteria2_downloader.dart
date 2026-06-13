@@ -249,7 +249,7 @@ class Hysteria2Downloader {
       print('HYSTERIA2 DOWNLOADER: Archive contains ${archive.length} files');
       for (final file in archive) {
         print('HYSTERIA2 DOWNLOADER: Archive file: ${file.name}');
-        if (file.name.toLowerCase().contains('wintun.dll') && file.name.toLowerCase().contains('x64')) {
+        if (file.name.toLowerCase().contains('wintun.dll') && file.name.toLowerCase().contains('amd64')) {
           final data = file.content as List<int>;
           await File(wintunPath).writeAsBytes(data);
           print('HYSTERIA2 DOWNLOADER: WinTun downloaded successfully to $wintunPath');
